@@ -22,18 +22,18 @@ core application. Core tracking must work without AI, Gmail or any single job so
 | Item | Status | Evidence / next step |
 | --- | --- | --- |
 | Repository baseline: API, Worker, PostgreSQL, web app, Docker Compose, health check | VERIFIED (user-reported) | `dotnet build` and `dotnet test` passed (4 tests). `docker compose build --no-cache` and `up` worked; API on `0.0.0.0:8080`; `/api/health/ready` returned status ok, database ok. |
-| GitHub Actions CI | VERIFIED (user-supplied screenshot) | Run #5 "Fixed CI", `main`, commit `9ba4ffc`, success: backend, frontend, secret-scan all passed (42s). Run URL reported by the user: https://github.com/devan95/job-search-tracker/actions/runs/43575054796. Earlier run #4 failed because `Api/Data/` was never committed (`.gitignore` `data/` matched `Data/` on Windows); fixed by anchoring the rule to `/data/`. |
-| Branch protection and required checks on `main` | NOT RUN | Must be configured and checked in GitHub settings. Do not claim enforcement until verified. |
+| GitHub Actions CI | VERIFIED (user-supplied screenshot) | Run #5 "Fixed CI", `main`, commit `9ba4ffc`, success: backend, frontend, secret-scan all passed (42s). Run URL reported by the user: https://github.com/devan95/job-search-tracker/actions/runs/43575054796. The AI later read the run list directly: the latest run on `main` (run 43587009809, "Docs updated", commit `180afff`, 2026-11-14) also succeeded in 37s. Earlier run #4 failed because `Api/Data/` was never committed (`.gitignore` `data/` matched `Data/` on Windows); fixed by anchoring the rule to `/data/`. |
+| Branch protection and required checks on `main` | DEFERRED (2026-11-14) | User decision: not needed now. Protection is **not enforced**; do not claim it is. The Work Protocol still asks for feature branches. Revisit before other contributors or before Phase 2. |
 | Greenhouse public job-board API | VERIFIED (user-reported) | GitLab board, `boards-api.greenhouse.io`: HTTP 200, JSON, 251 jobs, `meta.total` 251. See "Live ATS evidence" below. |
 | Lever public postings API | VERIFIED (user-reported) | Meesho, `api.lever.co`: HTTP 200, JSON, 49 postings; `skip`/`limit` pagination tested (5 + 5 distinct IDs). See below. |
 | Ashby public job-board API | VERIFIED (user-reported) | OP Labs, `api.ashbyhq.com`: HTTP 200, JSON, 5 jobs. See below. |
 | Live ATS fixtures for a real company per adapter | VERIFIED (user-reported), with limits | One real company per ATS retrieved, parsed and trimmed to 3-record sample fixtures kept outside Git. Limits (fixtures not in the repo, descriptions excluded, tests deferred to Phase 2) are listed below. The AI could not run these calls itself and has not seen the files. |
-| Adzuna API, India coverage | BLOCKED | Needs the user's API credentials. India support unconfirmed. Keep disabled. |
-| Jooble API, India coverage | BLOCKED | Needs the user's API key; keys are per country (free tier reported as 100 requests per key per country per day). India support unconfirmed. Keep disabled. |
-| Gmail IMAP read-only authentication | BLOCKED | Needs the user's mailbox and an app password. May be explicitly deferred; the connector stays disabled until proven. |
-| OmniRoute route, model and cost visibility | NOT RUN | Optional. Owned by the AI Gateway & Privacy Setup page. Core tracking must work without it. |
+| Adzuna API, India coverage | DEFERRED (2026-11-14) | User decision: evaluate when job-source integration testing begins (Phase 2). Needs the user's API credentials; India support unconfirmed. Connector stays disabled. |
+| Jooble API, India coverage | DEFERRED (2026-11-14) | User decision: evaluate when job-source integration testing begins (Phase 2). Needs the user's API key; keys are per country (free tier reported as 100 requests per key per country per day). India support unconfirmed. Connector stays disabled. |
+| Gmail IMAP read-only authentication | DEFERRED (2026-11-14) | User decision: evaluate when email integration testing begins. Needs the user's mailbox and an app password. Connector stays disabled until proven; read-only access only. |
+| OmniRoute route, model and cost visibility | DEFERRED (2026-11-14) | User decision: not needed now. Optional; owned by the AI Gateway & Privacy Setup page. Core tracking must work without it. |
 | Windows prerequisites (.NET 10, Docker, Node) | VERIFIED (user-reported, partly) | .NET build/test and Docker verified by the user. Local Node/npm not separately reported; the frontend job passes in CI. |
-| NAS prerequisites (CPU, RAM, disk, Docker) | NOT RUN | Validate before choosing the NAS as the host. Low priority; Windows first. |
+| NAS prerequisites (CPU, RAM, disk, Docker) | DEFERRED (2026-11-14) | User decision: not needed now; Windows first. Validate before choosing the NAS as the host. |
 | Freehire India/API proof of concept | NOT ADOPTED | User decision 2026-11-14. Never run. Not used. Do not reopen. Discovery uses verified Greenhouse, Lever and Ashby adapters, company lists, manual entry, Chrome capture and Gmail alerts. |
 
 ### Live ATS evidence (user-reported, 2026-11-14)
@@ -101,14 +101,19 @@ The user may defer these without blocking Phase 1, because the manual core appli
 Jooble, Gmail, OmniRoute, NAS prerequisites and branch protection. (Live ATS fixtures were verified on 2026-11-14 and need no
 deferral.) Deferral must be explicit and recorded in this file.
 
-### Current gate status (2026-11-14)
+### Gate status (2026-11-14): Phase 0 CLOSED
 
 | Criterion | Status |
 | --- | --- |
-| 1. Baseline and CI | Met |
-| 2. This document on `main` | Pending push of this change |
-| 3. All rows resolved (verified, deferred or not adopted) | **Open:** Adzuna, Jooble, Gmail, OmniRoute, NAS, branch protection. **Resolved:** Greenhouse, Lever, Ashby and live ATS fixtures (VERIFIED, user-reported, 2026-11-14) |
-| 4. Evidence recorded | Met for the rows marked VERIFIED |
+| 1. Baseline and CI | Met. CI green on `main`; local Docker stack reported `/api/health/ready` ok (user-reported). |
+| 2. This document on `main` | Met (matrix and criteria on `main`; the deferral decisions are recorded by the change that adds this section). |
+| 3. All rows resolved (verified, deferred or not adopted) | Met. VERIFIED: baseline, CI, Greenhouse, Lever, Ashby, live ATS fixtures, Windows prerequisites. DEFERRED with date and reason: Adzuna, Jooble, Gmail, OmniRoute, NAS, branch protection. NOT ADOPTED: Freehire. |
+| 4. Evidence recorded | Met for every VERIFIED row. ATS and Docker results are user-reported; the AI did not see them run. |
 
-**Phase 0 is not green yet.** The user has not confirmed it and criterion 3 is open. Phase 1 (data model: candidate, company
-list, search profile, first EF Core migration) starts only after the user confirms Phase 0 green.
+**Phase 0 is closed** on the user's confirmation, 2026-11-14. Phase 1 (data model: candidate, company list, search profile, first
+EF Core migration) may start.
+
+Open items that do not block Phase 1:
+- Unresolved observation: the hosted Greenhouse page showed about 48 postings while the API reported 251 (see above).
+- Deferred rows above stay disabled. Each is evaluated in the phase named in its row.
+- Branch protection is not enforced; direct pushes to `main` are possible.
