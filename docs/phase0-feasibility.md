@@ -106,7 +106,7 @@ deferral.) Deferral must be explicit and recorded in this file.
 | Criterion | Status |
 | --- | --- |
 | 1. Baseline and CI | Met. CI green on `main`; local Docker stack reported `/api/health/ready` ok (user-reported). |
-| 2. This document on `main` | Met (matrix and criteria on `main`; the deferral decisions are recorded by the change that adds this section). |
+| 2. This document on `main` | Met (on `main` since commit `9dfee0a`, "Close Phase 0"). |
 | 3. All rows resolved (verified, deferred or not adopted) | Met. VERIFIED: baseline, CI, Greenhouse, Lever, Ashby, live ATS fixtures, Windows prerequisites. DEFERRED with date and reason: Adzuna, Jooble, Gmail, OmniRoute, NAS, branch protection. NOT ADOPTED: Freehire. |
 | 4. Evidence recorded | Met for every VERIFIED row. ATS and Docker results are user-reported; the AI did not see them run. |
 

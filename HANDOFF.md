@@ -1,40 +1,47 @@
-# Handoff: Phase 1 Backend API (candidates, employers, company lists, search profiles)
+# Handoff: restore CI workflow, refresh docs (no application code changed)
 
 **Date:** 2026-11-14
-**Task:** Task Board "Backend API: candidates, employers, company lists and search profiles" (Phase 1). Status: In progress; code written, NOT built or run.
-**Intended branch:** `feature/phase1-backend-api`, to be created by you from your local data-model branch or from `main` once the data-model change is merged. The AI had no Git access and made no commit, push or branch.
-**Base:** the repository ZIP you supplied on 2026-11-14 and declared the latest code. It has no `.git` and no `.github/` folder, so the base commit, the data-model PR and merge status, and the CI workflow were NOT verified. Do not mark the data-model task Done on the strength of this ZIP.
+**Task:** Restore `.github/workflows/ci.yml` (deleted in commit `b1b8db6`, "Phase1. Part2") and refresh stale repository docs.
+**Base:** `main` @ `b1b8db6`, read via the GitHub connector. Nothing was committed or pushed by the AI.
 
-## Changed (compared with the supplied ZIP)
-| Area | Files |
+## Why CI went missing
+`ci.yml` existed through `e350bb6` and was the only file deleted by `b1b8db6`. That commit's handoff says the ZIP it was built
+from had no `.github/` folder, and the ZIP it produced had none either. Extracting a ZIP does not delete files, so the local
+replace step most likely removed files that were absent from the ZIP (the same happened to the early scaffold files in
+`8211cab`). This is an inference; the Part 2 ZIP and the local steps were not visible to the AI.
+**Consequence:** no CI ran for `b1b8db6`, so the Backend API code (54 database tests) has never run in CI.
+
+## Changed in this ZIP (compared with `main` @ `b1b8db6`)
+| File | Change |
 | --- | --- |
-| API | `src/JobSearchTracker.Api/Management/` (new): `CandidateEndpoints`, `EmployerEndpoints`, `CompanyListEndpoints`, `SearchProfileEndpoints`, `Contracts`, `Input`, `ApiResults` |
-| Wiring | `Program.cs`: maps the four endpoint groups; adds ProblemDetails, exception handler, status-code pages, and `ThrowOnBadRequest = false` so malformed requests are always 400 problems |
-| Model | `Data/Entities.cs`: `Candidate.Rename` only. No schema change, no migration |
-| Tests | `tests/JobSearchTracker.Api.Tests/`: `ApiTestBase`, `CandidateApiTests`, `EmployerApiTests`, `CompanyListApiTests`, `SearchProfileApiTests` (54 test methods, all `Category=Database`) |
-| Docs | `docs/api.md` (new: endpoints, error codes, examples), `docs/data-model.md` (deferred-requirements row), `docs/development.md` (link) |
+| `.github/workflows/ci.yml` | **Restored**, byte-identical to the version in `e350bb6` (and `089d01b`). Not edited. |
+| `.github/pull_request_template.md` | New: checks, safety and "no unexpected deleted files" checklist |
+| `README.md` | Rewritten: states what exists today (was still "Phase 0, no entities, not built yet"); layout now lists `.github/`, `.config/`, docs |
+| `CLAUDE.md` | Commands now include `dotnet tool restore`, database tests and the EF model check; new "ZIP delivery checklist" |
+| `docs/phase0-feasibility.md` | One cell: criterion 2 now cites commit `9dfee0a` instead of "the change that adds this section" |
+| `HANDOFF.md` | Replaced with this note |
 
-## Checks (actual results)
+**Deleted files: none.** No source, test, migration, Docker, `.gitignore` or web changes.
+
+## Checks
 | Check | Result |
 | --- | --- |
-| C# syntax parse of every new or changed file (tree-sitter) | PASS (syntax only; not a compile) |
-| `dotnet build`, `dotnet test`, `dotnet ef has-pending-model-changes` | NOT RUN: no .NET SDK, and the AI workspace cannot reach NuGet to restore packages |
-| Frontend lint/test/build, Docker, GitHub Actions | NOT RUN (frontend untouched) |
+| ZIP tree compared with `b1b8db6`: only the files above differ; no tracked file missing | PASS (AI, file comparison) |
+| `ci.yml` byte-identical to `e350bb6` | PASS (AI, `cmp`) |
+| `dotnet build`, `dotnet test`, frontend checks, Docker, GitHub Actions | NOT RUN (docs/config only; no .NET SDK or Docker in the AI workspace) |
 
-The code has never been compiled. Expect that a first build might report small compile errors; fix them rather than redesign.
-
-## Decisions made inside the approved scope (confirm or change)
-1. `POST /employers` returns 409 on a duplicate normalized name; `POST /employers/resolve` is the find-or-create. `GET /employers/lookup?name=` is the exact canonical lookup.
-2. Membership and list selection change only through the association endpoints (`PUT`/`DELETE .../employers/{id}`, `.../company-lists/{id}`); `PUT` on a list or profile never changes them. Adding twice is a 204 no-op; removing a non-member is 404 `not_a_member`.
-3. Unknown candidate or list ids in a profile create body are 400 field errors, not 404.
-4. Work modes cross the API as arrays (`remote`, `onSite`, `hybrid`). Profile `workModes`: omitted or null = inherit, `[]` = explicit empty set. List `defaultWorkModes` is never null (omitted = empty set).
-5. Profile `PUT` requires both discovery flags (so an omitted flag cannot silently turn a mode off). `profileVersion` is returned and never incremented.
-6. There is no employer rename/update (not in the task scope). List endpoints use `skip`/`take` (default 100, max 500) and return plain arrays.
-7. Added `UseExceptionHandler`/`UseStatusCodePages`/`AddProblemDetails` globally. This also affects the health endpoints' error bodies only for unexpected failures.
+## Review notes (not changed, no compiler available)
+- `WorkModesLimits.AllModes` in `Data/Entities.cs` is unused; the check constraints in `AppDbContext.cs` hard-code `7`.
+  Either use it or delete it in a later change that can be compiled.
+- Suggestions for later, not applied: Dependabot for NuGet/npm/Actions/Docker, and CI niceties (timeouts, concurrency,
+  pinning action versions). `ci.yml` was deliberately left untouched.
 
 ## Your next steps
-1. Back up or check your local working tree.
-2. Create `feature/phase1-backend-api`, extract this ZIP over the working tree keeping `.git` (the ZIP has no `.git/` and no `.github/`, so CI configuration is untouched).
-3. `dotnet tool restore`, start PostgreSQL, set `JOBSEARCH_TEST_ADMIN_CONNECTION`, then `dotnet build JobSearchTracker.slnx` and `dotnet test JobSearchTracker.slnx`. Report any compile or test failure to the AI.
-4. Review `git status` and `git diff`, commit and push yourself, and check the CI run.
-5. After pushing, upload this ZIP to the Notion Project Hub as the latest snapshot.
+1. Back up or check `C:\Users\Devan Shah\Repo\job-search-tracker` and make sure your clone is on `main` @ `b1b8db6` (or newer).
+2. Extract this ZIP over the folder, keeping `.git`. **Do not delete files first.**
+3. Run `git status`. Expect: new `.github/workflows/ci.yml` and `.github/pull_request_template.md`; modified `README.md`,
+   `CLAUDE.md`, `HANDOFF.md`, `docs/phase0-feasibility.md`; **no deleted (`D`) files**. Stop and ask if you see any `D`.
+4. Prefer a branch and pull request so CI runs before merge. Commit and push yourself.
+5. Check the CI run. It will be the first CI run for the Backend API code, so it may report compile or test failures.
+   Paste the log to the AI if it fails.
+6. Upload this ZIP to the Notion Project Hub as the latest snapshot after pushing.

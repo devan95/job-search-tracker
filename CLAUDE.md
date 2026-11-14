@@ -18,6 +18,20 @@ Requirements, decisions and tasks live in the Notion "Job Search & Application T
   no secrets, no build output) with a HANDOFF.md. See the Work Protocol in Notion.
 
 ## Commands
+- One-time: `dotnet tool restore` (pins dotnet-ef from `.config/dotnet-tools.json`)
 - Backend: `dotnet build JobSearchTracker.slnx` and `dotnet test JobSearchTracker.slnx`
+- Database tests (`Category=Database`) need PostgreSQL and the `JOBSEARCH_TEST_ADMIN_CONNECTION` variable; they fail,
+  never skip, without it. See `docs/development.md`. Without a database: `--filter "Category!=Database"` (this does not
+  prove the migration or schema).
+- EF model check (also run by CI): `dotnet ef migrations has-pending-model-changes --project src/JobSearchTracker.Api --startup-project src/JobSearchTracker.Api`
 - Frontend (in `web/`): `npm ci`, `npm run lint`, `npm test`, `npm run build`
 - Stack: copy `.env.example` to `.env`, set `POSTGRES_PASSWORD`, then `docker compose up --build`
+
+## ZIP delivery checklist
+Before sending a ZIP, compare its file list with the base commit's `git ls-files` (or the supplied tree).
+- The ZIP must contain the complete tree, including hidden files and folders: `.github/`, `.config/`, `.gitignore`,
+  `.gitattributes`, `.dockerignore`, `.editorconfig`, `.env.example`, `web/.gitignore`, `web/.oxlintrc.json`.
+- A tracked file missing from the ZIP is a blocker, not a detail. Never assume the user's replace step keeps files that
+  are absent from the ZIP; it may delete them.
+- `HANDOFF.md` must list every intentionally deleted file, or say "Deleted files: none".
+- If the base is a ZIP without `.github/` or `.git/`, say so and ask for a complete snapshot before packaging.
