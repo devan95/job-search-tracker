@@ -30,7 +30,7 @@
 | `docker compose config` without `POSTGRES_PASSWORD` | Fails as designed (password required) |
 | CI workflow and compose YAML parse | PASS |
 | Secret sweep of the tree | No secrets found |
-| **Backend restore/build** | **NOT RUN.** The workspace has no .NET SDK and its network allowlist blocks the SDK and NuGet downloads |
+| **Backend restore/build** | **NOT RUN by the AI** (no .NET SDK/NuGet in its workspace). User-reported on the first ZIP: API and Api.Tests built; Worker failed (missing `Microsoft.Extensions.Hosting` reference). Fixed in this ZIP, **not yet re-verified** |
 | **Backend xUnit tests** | **NOT RUN** (same reason) |
 | **`docker compose up` end to end** | **NOT RUN** (no .NET images/NuGet reachable, no running stack) |
 | **GitHub Actions CI** | **NOT RUN** (never pushed) |
