@@ -1,37 +1,43 @@
-# Instructions for AI coding sessions
+# AI coding-session entry point
 
-Project: Job Search & Application Tracker (local-first, .NET 10 + React/TypeScript + PostgreSQL).
-Requirements, decisions and tasks live in the Notion "Job Search & Application Tracker — Project Hub".
+Project: Job Search & Application Tracker (local-first; .NET 10, React/TypeScript, PostgreSQL).
 
-## Before editing
-1. Read the relevant Notion pages (Work Protocol, Product Requirements, Architecture, Testing Plan) and the Task Board item.
-2. Inspect the real repository state (structure, Git status, branch, CI). Do not assume the layout in this file is current.
-3. Preserve existing and uncommitted work. Work one small task at a time.
+## Read before starting
 
-## Rules
-- Implement only requirements marked Confirmed. Do not change product semantics (Applied, source status, scan success) silently.
-- Never commit secrets, real `.env` files, candidate data or resumes. Use synthetic data.
-- Do not commit, push, merge, run destructive migrations or submit applications without explicit user approval.
-- Report tests honestly: PASS, FAIL, NOT RUN or BLOCKED. A test that was not run is not passing.
-- Core tracking must keep working when Gmail, AI or any single source is unavailable.
-- Delivery: every change set the user is expected to push is delivered as a complete repository ZIP (no `.git`,
-  no secrets, no build output) with a HANDOFF.md. See the Work Protocol in Notion.
+1. Open the [Notion Project Hub](https://app.notion.com/p/41544a92926f81dab0b7fc1f6451e23f).
+2. Read the relevant confirmed requirement/decision and the exact Task Board item, including **Brief for the next account**. Follow the Notion Work Protocol and Testing Plan.
+3. Connect to `devan95/job-search-tracker`; verify the intended branch, latest commit, CI result and actual files. Inspect the real working tree and preserve uncommitted work. If a user ZIP is attached, follow the Notion Attached ZIP rule before using it.
 
-## Commands
-- One-time: `dotnet tool restore` (pins dotnet-ef from `.config/dotnet-tools.json`)
-- Backend: `dotnet build JobSearchTracker.slnx` and `dotnet test JobSearchTracker.slnx`
-- Database tests (`Category=Database`) need PostgreSQL and the `JOBSEARCH_TEST_ADMIN_CONNECTION` variable; they fail,
-  never skip, without it. See `docs/development.md`. Without a database: `--filter "Category!=Database"` (this does not
-  prove the migration or schema).
-- EF model check (also run by CI): `dotnet ef migrations has-pending-model-changes --project src/JobSearchTracker.Api --startup-project src/JobSearchTracker.Api`
-- Frontend (in `web/`): `npm ci`, `npm run lint`, `npm test`, `npm run build`
-- Stack: copy `.env.example` to `.env`, set `POSTGRES_PASSWORD`, then `docker compose up --build`
+## Documentation ownership
 
-## ZIP delivery checklist
-Before sending a ZIP, compare its file list with the base commit's `git ls-files` (or the supplied tree).
-- The ZIP must contain the complete tree, including hidden files and folders: `.github/`, `.config/`, `.gitignore`,
-  `.gitattributes`, `.dockerignore`, `.editorconfig`, `.env.example`, `web/.gitignore`, `web/.oxlintrc.json`.
-- A tracked file missing from the ZIP is a blocker, not a detail. Never assume the user's replace step keeps files that
-  are absent from the ZIP; it may delete them.
-- `HANDOFF.md` must list every intentionally deleted file, or say "Deleted files: none".
-- If the base is a ZIP without `.github/` or `.git/`, say so and ask for a complete snapshot before packaging.
+- Notion owns product requirements, approved decisions, roadmap, task status, open questions and durable handoff history.
+- This repository owns source code, tests, API contracts, schema/migrations, development commands, CI and implementation-level technical documentation.
+- Do not copy detailed information between the two systems. Link to the authoritative document. Update both only when a change affects two distinct subjects, each in its own canonical location.
+- `README.md` is a short repository guide. `HANDOFF.md` is specific to a delivered change set; record durable session history in the Notion Handoff Log.
+
+## Non-negotiable rules
+
+- Implement only requirements marked Confirmed. Do not silently change product semantics, especially Applied, source status, scan outcomes or duplicate handling.
+- Never commit secrets, real `.env` files, credentials, resumes or real candidate data. Use synthetic test data.
+- Do not commit, push, merge, delete data, run destructive migrations or submit applications without explicit user approval.
+- Do not bypass CAPTCHA, OTP, authentication or job-platform restrictions. Application submission requires human approval and verified confirmation.
+- Core tracking must work without AI, Gmail or any individual job source.
+- Report every check honestly as PASS, FAIL, NOT RUN or BLOCKED. A check not run is not a pass.
+- Do not claim a branch, commit, CI run, test, deployment or application submission unless verified by actual evidence.
+- Work one explicitly scoped Task Board item at a time. Preserve all existing and uncommitted work.
+
+## Repository checks
+
+Run the commands applicable to the change. Full local setup and database-test requirements are documented in [`docs/development.md`](docs/development.md).
+
+- Restore pinned .NET tools: `dotnet tool restore`
+- Backend: `dotnet build JobSearchTracker.slnx`
+- Backend tests: `dotnet test JobSearchTracker.slnx`
+- EF model check: `dotnet ef migrations has-pending-model-changes --project src/JobSearchTracker.Api --startup-project src/JobSearchTracker.Api`
+- Frontend, from `web/`: `npm ci`, `npm run lint`, `npm test`, `npm run build`
+
+Database tests require PostgreSQL and `JOBSEARCH_TEST_ADMIN_CONNECTION`; see `docs/development.md`. If the environment lacks the SDK, Docker, database or required credentials, report the affected checks as NOT RUN or BLOCKED. Do not imply CI passed unless you inspected the actual run.
+
+## Delivery
+
+Follow the current Notion Work Protocol for branch, review, complete-tree ZIP and handoff requirements. Before packaging, compare the ZIP file list against the base snapshot and ensure no tracked files are missing. Include a delivery-specific `HANDOFF.md` and explicitly list deleted files (or state `Deleted files: none`). Exclude `.git`, secrets, real `.env` files, candidate data, local databases, caches and build artifacts. The user performs the Git commit/push unless explicitly authorized otherwise.

@@ -1,47 +1,44 @@
 # Job Search & Application Tracker
 
-A generic, local-first application that discovers relevant jobs from saved company lists and enabled job
-platforms, consolidates them into one tracker, and records manual or assisted applications consistently.
+A generic, local-first application for discovering relevant jobs from saved company lists and enabled sources, consolidating vacancies into canonical job records, and tracking applications consistently.
 
-Code and data stay on your own machine (Windows PC first, home NAS later). Notion holds requirements,
-decisions, tasks and handoffs; it is not the runtime database.
+The application and its data run locally (Windows PC first; home NAS later).
 
-## What exists today
+## Repository contents
 
-- **API** (ASP.NET Core, .NET 10): health endpoints, and a management API for candidates, employers, company lists and
-  search profiles ([docs/api.md](docs/api.md)).
-- **Database** (PostgreSQL via EF Core): six-table data model and the initial migration
-  ([docs/data-model.md](docs/data-model.md)).
-- **Worker**: placeholder heartbeat only; no scheduled work yet.
-- **Web** (React + TypeScript + Vite): system status page only; the management screens are not built yet.
-- **Docker Compose**: PostgreSQL, API and Worker, with localhost-only ports.
-- **CI** (GitHub Actions): backend build, EF model-matches-migrations check and tests against PostgreSQL 17; frontend
-  lint, test and build; secret scan.
+| Area | Location |
+|---|---|
+| ASP.NET Core API (.NET 10) | `src/JobSearchTracker.Api/` |
+| Background worker | `src/JobSearchTracker.Worker/` |
+| PostgreSQL / EF Core model and migrations | `src/JobSearchTracker.Api/Data/` |
+| xUnit tests | `tests/JobSearchTracker.Api.Tests/` |
+| React + TypeScript + Vite frontend | `web/` |
+| GitHub Actions CI | `.github/workflows/ci.yml` |
+| API contract | `docs/api.md` |
+| Data model and migration notes | `docs/data-model.md` |
+| Local development and test instructions | `docs/development.md` |
+| Phase 0 evidence record | `docs/phase0-feasibility.md` |
 
-Not built yet: company-list import, job discovery, job and application tracking, Gmail alerts, AI features.
+## Current implementation
 
-Which tasks are done, in progress or verified is tracked on the Notion Task Board, not in this file.
+The repository currently contains the API health endpoints and management endpoints for candidates, employers, company lists and search profiles; the initial PostgreSQL/EF Core model and migration; a worker heartbeat placeholder; and a frontend system-status page.
 
-## Layout
+Company-list import, job discovery, canonical job tracking, application tracking, Gmail alert ingestion and AI features are not yet implemented. Check the Notion Task Board for authoritative task status and the next approved task. This section is a high-level implementation snapshot, not a task tracker.
 
-```
-.github/workflows/ci.yml           CI pipeline
-.config/dotnet-tools.json          Pinned dotnet-ef tool (run `dotnet tool restore`)
-src/JobSearchTracker.Api/          ASP.NET Core Web API, EF Core model and migrations
-src/JobSearchTracker.Worker/       Background worker
-tests/JobSearchTracker.Api.Tests/  xUnit tests (database tests need PostgreSQL)
-web/                               React + TypeScript + Vite UI
-docs/                              development.md, api.md, data-model.md, phase0-feasibility.md
-```
+## Getting started
 
-## Quick start
+Follow [`docs/development.md`](docs/development.md) for prerequisites, configuration, database setup, build and test commands.
 
-See [docs/development.md](docs/development.md).
+## Project documentation and decisions
 
-## Rules that matter
+- **Product requirements, approved decisions, roadmap, task status and handoffs:** [Notion Project Hub](https://app.notion.com/p/41544a92926f81dab0b7fc1f6451e23f).
+- **Source code, API contracts, data model, development instructions and CI:** this repository.
 
-- No secrets in Git. Use `.env` (ignored) and `.env.example` (committed, no values).
-- No unauthorized scraping, authentication bypass or automatic applications.
-- Source status and application status must be reported honestly; see the Notion Product Requirements.
-- Hidden files are part of the repository: `.github/`, `.config/`, `.gitignore` and friends must never be dropped
-  when files are replaced.
+Do not copy detailed Notion requirements or project status into this README. Do not copy repository API/schema/setup documentation into Notion. Update the authoritative source for the subject and link to it from the other system.
+
+## Safety
+
+- Never commit secrets, real `.env` files, credentials, resumes or real candidate data. Use synthetic test data and `.env.example`.
+- Do not bypass authentication, CAPTCHA, OTP or platform restrictions; do not perform unauthorized scraping or automatic applications.
+- Application submission requires human approval and verified confirmation. Follow the approved Notion product and architecture decisions.
+- Preserve hidden repository files and folders (including `.github/` and `.config/`) when replacing project files.
