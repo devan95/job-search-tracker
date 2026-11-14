@@ -1,8 +1,41 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+appsettings.*.local.json
+secrets.json
+*.pfx
+*.key
+
+# Local data, logs, backups
+*.log
+logs/
+data/
+backups/
+*.sql.bak
+
+# .NET
 bin/
 obj/
-node_modules/
-dist/
-.env
 *.user
+*.suo
 .vs/
-appsettings.Local.json
+TestResults/
+*.trx
+
+# Node / web
+node_modules/
+web/dist/
+web/coverage/
+*.tsbuildinfo
+
+# Playwright
+playwright-report/
+test-results/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json

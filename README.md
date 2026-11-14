@@ -1,23 +1,40 @@
 # Job Search & Application Tracker
 
-Local-first tracker. Requirements/decisions live in Notion (Project Hub); code, tests and CI live here.
+A generic, local-first application that discovers relevant jobs from saved company lists and enabled job
+platforms, consolidates them into one tracker, and records manual or assisted applications consistently.
 
-## Prerequisites
-.NET 10 SDK, Node 20+, Docker Desktop, `dotnet tool install -g dotnet-ef`
+Code and data stay on your own machine (Windows PC first, home NAS later). Notion holds requirements,
+decisions, tasks and handoffs; it is not the runtime database.
 
-## Run (first milestone)
-```powershell
-copy deploy\.env.sample deploy\.env      # set a local password
-docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d
-dotnet ef migrations add Initial --project apps/server   # first time only
-dotnet run --project apps/server                         # http://localhost:5080
-cd apps/web; npm install; npm run dev                    # http://localhost:5173
+## Status
+
+**Phase 0 – foundation.** The repository contains a runnable skeleton only:
+
+- ASP.NET Core Web API (.NET 10) with `/api/health/live` and `/api/health/ready`
+- PostgreSQL via EF Core (no entities or migrations yet)
+- .NET Worker (placeholder heartbeat; no scheduled work yet)
+- React + TypeScript + Vite status page that shows API and database state
+- Docker Compose for PostgreSQL, API and Worker (localhost-only ports)
+- CI: backend build/test, frontend lint/test/build, secret scan
+
+Job discovery, Gmail, profiles, applications and AI are **not built yet**.
+
+## Layout
+
 ```
-Health: `GET /api/health/live` (no DB), `GET /api/health/ready` (DB check). Migrations apply on startup in Development.
-
-## Test
-```powershell
-dotnet test tests/backend
-cd apps/web; npm run lint; npm run build
+src/JobSearchTracker.Api/       ASP.NET Core Web API
+src/JobSearchTracker.Worker/    Background worker
+tests/JobSearchTracker.Api.Tests/  xUnit integration tests
+web/                            React + TypeScript + Vite UI
+docs/                           Development guide and Phase 0 feasibility matrix
 ```
-Secrets never go in git: use `deploy/.env` and user-secrets (both ignored/sample-only).
+
+## Quick start
+
+See [docs/development.md](docs/development.md).
+
+## Rules that matter
+
+- No secrets in Git. Use `.env` (ignored) and `.env.example` (committed, no values).
+- No unauthorized scraping, authentication bypass or automatic applications.
+- Source status and application status must be reported honestly; see the Notion Product Requirements.
