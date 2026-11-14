@@ -49,11 +49,29 @@ in `appsettings.json`: it overrides `ASPNETCORE_URLS` and breaks the Docker cont
 ## Tests
 
 ```
+dotnet tool restore
 dotnet test JobSearchTracker.slnx
 cd web && npm test
 ```
 
-Backend tests need no database: they replace the database probe or point at a closed port.
+Tests marked `Category=Database` need a real PostgreSQL server. They create a uniquely named database per test, apply the
+migration, and drop the database afterwards (also when the test fails). They **fail** when PostgreSQL is not reachable; they
+are never skipped. Point them at a server where the user may create and drop databases:
+
+```
+docker compose up db -d
+set JOBSEARCH_TEST_ADMIN_CONNECTION=Host=127.0.0.1;Port=5432;Database=postgres;Username=jobsearch;Password=<your password>
+dotnet test JobSearchTracker.slnx
+```
+
+(PowerShell: `$env:JOBSEARCH_TEST_ADMIN_CONNECTION = "..."`. Use bash `export` on macOS/Linux.) Never put the password in a
+committed file. To run only the tests that need no database, use `dotnet test JobSearchTracker.slnx --filter "Category!=Database"`;
+that run does not prove the migration or schema.
+
+CI runs the same tests against a PostgreSQL 17 service and also runs
+`dotnet ef migrations has-pending-model-changes`, which fails when the model changed without a new migration.
+After changing the model, add a migration: `dotnet ef migrations add <Name> --project src/JobSearchTracker.Api --startup-project src/JobSearchTracker.Api`
+(with `ConnectionStrings:Default` set). The data model is described in `data-model.md`.
 
 ## Health endpoints
 
