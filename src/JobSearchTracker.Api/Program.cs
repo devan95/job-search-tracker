@@ -1,5 +1,6 @@
 using JobSearchTracker.Api.Data;
 using JobSearchTracker.Api.Health;
+using JobSearchTracker.Api.Management;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -15,10 +16,22 @@ builder.Services.AddDbContext<AppDbContext>((services, options) =>
 });
 builder.Services.AddScoped<IDatabaseProbe, EfDatabaseProbe>();
 
+// Errors (including malformed request bodies and unexpected failures) are returned as RFC 7807 problem documents.
+builder.Services.AddProblemDetails();
+// A malformed request is always a 400 problem document, also in Development (where binding failures would otherwise throw).
+builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = false);
+
 var app = builder.Build();
+
+app.UseExceptionHandler();
+app.UseStatusCodePages();
 
 var api = app.MapGroup("/api");
 api.MapHealthEndpoints();
+api.MapCandidateEndpoints();
+api.MapEmployerEndpoints();
+api.MapCompanyListEndpoints();
+api.MapSearchProfileEndpoints();
 
 app.Run();
 

@@ -70,7 +70,7 @@ approved "proposed cascade/restrict relationships" (U8); see "Assumptions to con
 | Source catalog and independently enabled sources per profile | Product Requirements sections 3-4; Testing Plan "Search profiles" | Phase 2 |
 | Multiline list entry, duplicate preview before saving | Product Requirements section 2; Testing Plan "Multiline lists" | Later Phase 1 task (UI/API), not this data-model task |
 | Automatic `ProfileVersion` increment | U9 | Not in Phase 1 |
-| API endpoints and UI for any of the above | - | Later Phase 1 tasks |
+| API endpoints for candidates, employers, lists and profiles | - | Delivered by the Backend API task: see [api.md](api.md). UI for any of the above stays a later Phase 1 task |
 
 ## Assumptions to confirm
 

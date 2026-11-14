@@ -29,6 +29,8 @@ public class Candidate
     public Guid Id { get; private set; }
     public string Name { get; private set; } = null!;
     public List<SearchProfile> SearchProfiles { get; } = [];
+
+    public void Rename(string name) => Name = NameNormalizer.CleanDisplayName(name);
 }
 
 /// <summary>Canonical employer. Phase 1 stores only the name; website, career URL and ATS arrive in Phase 2.</summary>

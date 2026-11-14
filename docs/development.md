@@ -73,6 +73,11 @@ CI runs the same tests against a PostgreSQL 17 service and also runs
 After changing the model, add a migration: `dotnet ef migrations add <Name> --project src/JobSearchTracker.Api --startup-project src/JobSearchTracker.Api`
 (with `ConnectionStrings:Default` set). The data model is described in `data-model.md`.
 
+## Management API
+
+Candidates, employers, company lists and search profiles are managed through `/api/...`; see [api.md](api.md) for the
+endpoints, error semantics and examples. Its tests are database tests (they need `JOBSEARCH_TEST_ADMIN_CONNECTION`).
+
 ## Health endpoints
 
 | Endpoint | Meaning |
