@@ -5,6 +5,29 @@
 **Base branch/commit:** none. The repository was empty at the start of this work and no Git state was inspected
 (no GitHub access in this session). Nothing was committed or pushed.
 
+## Update (fix3): Docker build NETSDK1064 on Worker publish
+
+- **Cause (inferred, not reproduced by the AI):** no `.dockerignore`, so `COPY src/.../` copied the host's `obj/` and `bin/`
+  into the image. The host `project.assets.json` (Windows package paths) replaced the restored one, and `publish --no-restore`
+  could not find `Microsoft.Extensions.Configuration.Binder 10.0.0`. This also sent `.env` into the Docker build context.
+- **Fix:** added a root `.dockerignore` (excludes `bin`, `obj`, `node_modules`, `.git`, `.env*`, tests, docs); removed
+  `--no-restore` from both `dotnet publish` steps (restore is a no-op if up to date, and self-heals otherwise).
+  API still listens on `http://0.0.0.0:8080`.
+- **NOT RUN by the AI:** `docker compose build` / `up` (no Docker daemon or registry access in its workspace). Verify with
+  `docker compose build --no-cache`.
+
+## Update (fix2): Docker API networking
+
+- **Cause:** `src/JobSearchTracker.Api/appsettings.json` contained `"Urls": "http://127.0.0.1:5080"`, which overrode
+  `ASPNETCORE_URLS=http://+:8080` in the container, so the API listened on container loopback and was unreachable
+  through the published port.
+- **Fix:** removed `Urls` from `appsettings.json`; added `Properties/launchSettings.json` (127.0.0.1:5080, used only by
+  `dotnet run`); set `ASPNETCORE_URLS=http://0.0.0.0:8080` explicitly in the API Dockerfile and in `docker-compose.yml`.
+  Host mapping is unchanged (`127.0.0.1:5080:8080`).
+- **Verified by the AI:** JSON/YAML parse; `docker compose config` shows `ASPNETCORE_URLS` and the unchanged port mapping.
+- **NOT RUN by the AI:** `docker compose up --build`, the health endpoint response, `dotnet build`, `dotnet test`
+  (no .NET SDK, NuGet or image registry access in its workspace). Re-run them locally.
+
 ## What is in this ZIP
 
 | Area | Contents |

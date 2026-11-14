@@ -23,6 +23,7 @@ services:
       context: .
       dockerfile: src/JobSearchTracker.Api/Dockerfile
     environment:
+      ASPNETCORE_URLS: http://0.0.0.0:8080
       ConnectionStrings__Default: Host=db;Port=5432;Database=jobsearch;Username=jobsearch;Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     ports:
       - "127.0.0.1:5080:8080"

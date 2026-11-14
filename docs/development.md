@@ -40,8 +40,11 @@ variable or user secrets. Do not put the password in a committed file.
 cd src/JobSearchTracker.Api
 dotnet user-secrets init
 dotnet user-secrets set "ConnectionStrings:Default" "Host=127.0.0.1;Port=5432;Database=jobsearch;Username=jobsearch;Password=<your password>"
-dotnet run
+dotnet run --launch-profile http
 ```
+
+Local runs listen on http://127.0.0.1:5080 (set in `Properties/launchSettings.json`). Do not put a `Urls` setting
+in `appsettings.json`: it overrides `ASPNETCORE_URLS` and breaks the Docker container's `0.0.0.0:8080` listener.
 
 ## Tests
 
