@@ -10,7 +10,9 @@ secrets.json
 # Local data, logs, backups
 *.log
 logs/
-data/
+# Anchored to the repo root: an unanchored "data/" also matches source folders such as
+# src/JobSearchTracker.Api/Data/ on case-insensitive filesystems (Windows) and hides them from Git.
+/data/
 backups/
 *.sql.bak
 

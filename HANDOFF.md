@@ -1,88 +1,51 @@
-# Handoff: Phase 0 repository foundation
+# Handoff: fix backend CI (missing Api/Data folder)
 
 **Date:** 2026-11-14
-**Task:** Create the initial runnable skeleton (API + worker + web + PostgreSQL + health check + smoke tests + CI + docs).
-**Base branch/commit:** none. The repository was empty at the start of this work and no Git state was inspected
-(no GitHub access in this session). Nothing was committed or pushed.
+**Task:** Phase 0 - make the GitHub Actions backend job pass. Task Board: "First GitHub Actions CI run is green".
+**Base:** `main` @ `45686e9` ("Push changes"), read via the GitHub connector. Nothing committed or pushed by the AI.
 
-## Update (fix3): Docker build NETSDK1064 on Worker publish
+## Problem
+CI run #4: backend FAIL (CS0234 `JobSearchTracker.Api.Data` not found, CS0246 `AppDbContext` not found).
+Frontend PASS (7 tests), secret scan PASS.
 
-- **Cause (inferred, not reproduced by the AI):** no `.dockerignore`, so `COPY src/.../` copied the host's `obj/` and `bin/`
-  into the image. The host `project.assets.json` (Windows package paths) replaced the restored one, and `publish --no-restore`
-  could not find `Microsoft.Extensions.Configuration.Binder 10.0.0`. This also sent `.env` into the Docker build context.
-- **Fix:** added a root `.dockerignore` (excludes `bin`, `obj`, `node_modules`, `.git`, `.env*`, tests, docs); removed
-  `--no-restore` from both `dotnet publish` steps (restore is a no-op if up to date, and self-heals otherwise).
-  API still listens on `http://0.0.0.0:8080`.
-- **NOT RUN by the AI:** `docker compose build` / `up` (no Docker daemon or registry access in its workspace). Verify with
-  `docker compose build --no-cache`.
+## Cause
+`.gitignore` contained an unanchored `data/` rule. With `core.ignorecase=true` (Git for Windows default) it also matches
+`src/JobSearchTracker.Api/Data/`, so `Data/AppDbContext.cs` was never committed. Local builds passed because the file
+existed on disk. Reproduced in the AI workspace with `git -c core.ignorecase=true check-ignore -v` (ignored before the fix,
+not ignored after).
 
-## Update (fix2): Docker API networking
-
-- **Cause:** `src/JobSearchTracker.Api/appsettings.json` contained `"Urls": "http://127.0.0.1:5080"`, which overrode
-  `ASPNETCORE_URLS=http://+:8080` in the container, so the API listened on container loopback and was unreachable
-  through the published port.
-- **Fix:** removed `Urls` from `appsettings.json`; added `Properties/launchSettings.json` (127.0.0.1:5080, used only by
-  `dotnet run`); set `ASPNETCORE_URLS=http://0.0.0.0:8080` explicitly in the API Dockerfile and in `docker-compose.yml`.
-  Host mapping is unchanged (`127.0.0.1:5080:8080`).
-- **Verified by the AI:** JSON/YAML parse; `docker compose config` shows `ASPNETCORE_URLS` and the unchanged port mapping.
-- **NOT RUN by the AI:** `docker compose up --build`, the health endpoint response, `dotnet build`, `dotnet test`
-  (no .NET SDK, NuGet or image registry access in its workspace). Re-run them locally.
-
-## What is in this ZIP
-
-| Area | Contents |
+## Changes in this ZIP
+| Area | Change |
 | --- | --- |
-| `src/JobSearchTracker.Api` | ASP.NET Core (.NET 10) API: `GET /api/health/live`, `GET /api/health/ready` (200 when PostgreSQL answers, 503 `degraded` otherwise), EF Core `AppDbContext` with no entities yet, Dockerfile |
-| `src/JobSearchTracker.Worker` | .NET Worker placeholder (heartbeat log only; no scheduled work), Dockerfile |
-| `tests/JobSearchTracker.Api.Tests` | xUnit integration tests for the health endpoints (4 tests, no database needed) |
-| `web/` | React + TypeScript + Vite status page showing API and database state (running / degraded / unreachable), Vitest tests (7), proxy of `/api` to the API |
-| `docker-compose.yml`, `.env.example` | PostgreSQL 17 + API + Worker; all ports bound to 127.0.0.1; `POSTGRES_PASSWORD` required, no default |
-| `.github/workflows/ci.yml` | Backend build/test, frontend lint/test/build, gitleaks secret scan |
-| `README.md`, `CLAUDE.md`, `docs/` | Overview, AI session rules, development guide, Phase 0 feasibility matrix (all items NOT RUN) |
-| `global.json`, `JobSearchTracker.slnx` | SDK pin (10.0.100, roll forward) and solution (XML `.slnx` format, needs .NET 10 SDK) |
+| `.gitignore` | `data/` -> `/data/` (repo-root only), with an explanatory comment |
+| `src/JobSearchTracker.Api/Data/AppDbContext.cs` | Added. Minimal empty context: `AppDbContext(DbContextOptions<AppDbContext>) : DbContext`. **Compare with your local copy before overwriting** (see step 2) |
+| Repo root | 11 empty stray files are removed from this tree (`CACHED`, `[api`, `[api]`, `[internal]`, `[worker`, `[worker]`, `cd`, `copy`, `dir`, `docker`, `notepad`) |
+| `HANDOFF.md` | Replaced with this note |
 
-## Verification results (actually executed in the AI workspace)
+No other source, test, Docker or CI changes.
 
+## Checks
 | Check | Result |
 | --- | --- |
-| Frontend `npm ci` from a clean copy | PASS |
-| Frontend `npm run lint` (oxlint) | PASS (no findings) |
-| Frontend `npm test` (Vitest) | PASS: 2 files, 7 tests |
-| Frontend `npm run build` (tsc + Vite) | PASS |
-| `docker compose config` with a dummy password | PASS (valid) |
-| `docker compose config` without `POSTGRES_PASSWORD` | Fails as designed (password required) |
-| CI workflow and compose YAML parse | PASS |
-| Secret sweep of the tree | No secrets found |
-| **Backend restore/build** | **NOT RUN by the AI** (no .NET SDK/NuGet in its workspace). User-reported on the first ZIP: API and Api.Tests built; Worker failed (missing `Microsoft.Extensions.Hosting` reference). Fixed in this ZIP, **not yet re-verified** |
-| **Backend xUnit tests** | **NOT RUN** (same reason) |
-| **`docker compose up` end to end** | **NOT RUN** (no .NET images/NuGet reachable, no running stack) |
-| **GitHub Actions CI** | **NOT RUN** (never pushed) |
+| `.gitignore` no longer hides `Data/` (simulated Windows ignore-case) | PASS (AI workspace) |
+| Root `/data/` still ignored | PASS (AI workspace) |
+| `dotnet restore/build/test` | NOT RUN (no .NET SDK in the AI workspace) |
+| `docker compose build/up` | NOT RUN (not touched by this change; no Docker daemon access in the AI workspace) |
+| Frontend lint/test/build | NOT RUN this session (no frontend change; CI run #4 reported PASS) |
+| GitHub Actions after push | NOT RUN (unconfirmed until you push and report the run) |
 
-## Known limitations and risks
-
-- The C# code and NuGet package versions (EF Core 10.0.0, Npgsql EF 10.0.0, Mvc.Testing 10.0.0, xunit 2.9.3,
-  Test.Sdk 17.14.1, xunit.runner.visualstudio 3.1.4) were written without a compiler and without checking NuGet.
-  Expect that a version or small compile fix may be needed on the first `dotnet build`. Treat the backend as unverified.
-- No database entities or migrations exist yet. The `ready` endpoint only proves a connection can be opened.
-- The worker is a placeholder. The PostgreSQL-backed queue is a later task.
-- No Playwright, Gmail, Freehire, AI or discovery code exists. Phase 0 feasibility items remain NOT RUN (docs/phase0-feasibility.md).
-- Branch protection and the required-checks policy must be configured in GitHub; not verified.
+## Known limitations
+- `AppDbContext.cs` was recreated from how it is used (`AddDbContext<AppDbContext>`, `db.Database.CanConnectAsync`). Your local file
+  may differ; keep yours if it does and only fix the ignore rule.
+- Phase 0 is **not** green: live Greenhouse/Lever/Ashby fixtures, Gmail, Adzuna/Jooble and NAS checks are still open.
+- `docs/phase0-feasibility.md` on `main` is still the old matrix (the phase0-gate docs change is not in `main`).
 
 ## Your next steps
-
 1. Back up or check your local working tree at `C:\Users\Devan Shah\Repos\job-search-tracker`.
-2. Extract this ZIP **into that folder** and let it overwrite files. Keep the existing `.git` directory (it is not in the ZIP).
-3. Create a feature branch, then run:
-   ```
-   dotnet build JobSearchTracker.slnx
-   dotnet test JobSearchTracker.slnx
-   cd web && npm ci && npm test && npm run build
-   ```
-   and, with `.env` created from `.env.example`: `docker compose up --build`, then open
-   http://127.0.0.1:5080/api/health/ready (expect `{"status":"ok","database":"ok"}`).
-4. Review `git status` and `git diff`, commit and push yourself, then check the first CI run.
-5. Upload this same ZIP to the Notion Project Hub page as the latest snapshot.
-6. Send me the build/test output (especially any backend errors) and I will fix them first.
-
-Suggested next task after the backend is green: Phase 1 data model (candidate, company list, search profile) with
-the first EF Core migration, driven by the confirmed requirements.
+2. Before extracting, check whether your local `src\JobSearchTracker.Api\Data\AppDbContext.cs` exists and copy it aside.
+3. Extract this ZIP into that folder, keeping `.git`. Then delete the 11 stray files if they are still present
+   (`git rm` them; they are tracked in `main`). If your local `AppDbContext.cs` differed, restore it over the ZIP version.
+4. Run `git status`: `src/JobSearchTracker.Api/Data/AppDbContext.cs` must appear as untracked/added (not missing, not ignored).
+   Then `dotnet build JobSearchTracker.slnx -c Release` and `dotnet test JobSearchTracker.slnx -c Release`.
+5. Commit and push yourself, open the Actions tab and report the backend/frontend/secret-scan result.
+6. Upload this ZIP to the Notion Project Hub as the latest snapshot after pushing.
