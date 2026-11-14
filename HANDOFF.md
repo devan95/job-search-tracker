@@ -1,51 +1,43 @@
-# Handoff: fix backend CI (missing Api/Data folder)
+# Handoff: Phase 0 gate docs, with live ATS fixture evidence (docs only)
 
 **Date:** 2026-11-14
-**Task:** Phase 0 - make the GitHub Actions backend job pass. Task Board: "First GitHub Actions CI run is green".
-**Base:** `main` @ `45686e9` ("Push changes"), read via the GitHub connector. Nothing committed or pushed by the AI.
+**Task:** Put the Phase 0 matrix and acceptance criteria on `main` (`docs/phase0-feasibility.md`) and record the user-run live ATS
+fixture evidence. **This ZIP supersedes `job-search-tracker-phase0-gate-docs-2026-11-14.zip`**; use only this one.
+**Base:** `main` @ `9ba4ffc` ("Fixed CI"), read via the GitHub connector. Nothing committed or pushed by the AI.
 
-## Problem
-CI run #4: backend FAIL (CS0234 `JobSearchTracker.Api.Data` not found, CS0246 `AppDbContext` not found).
-Frontend PASS (7 tests), secret scan PASS.
-
-## Cause
-`.gitignore` contained an unanchored `data/` rule. With `core.ignorecase=true` (Git for Windows default) it also matches
-`src/JobSearchTracker.Api/Data/`, so `Data/AppDbContext.cs` was never committed. Local builds passed because the file
-existed on disk. Reproduced in the AI workspace with `git -c core.ignorecase=true check-ignore -v` (ignored before the fix,
-not ignored after).
-
-## Changes in this ZIP
-| Area | Change |
+## Changed in this ZIP
+| File | Change |
 | --- | --- |
-| `.gitignore` | `data/` -> `/data/` (repo-root only), with an explanatory comment |
-| `src/JobSearchTracker.Api/Data/AppDbContext.cs` | Added. Minimal empty context: `AppDbContext(DbContextOptions<AppDbContext>) : DbContext`. **Compare with your local copy before overwriting** (see step 2) |
-| Repo root | 11 empty stray files are removed from this tree (`CACHED`, `[api`, `[api]`, `[internal]`, `[worker`, `[worker]`, `cd`, `copy`, `dir`, `docker`, `notepad`) |
+| `docs/phase0-feasibility.md` | Evidence-based capability matrix and acceptance criteria. Greenhouse, Lever, Ashby and "live ATS fixtures" rows now VERIFIED (user-reported) with an evidence section and a list of what is not covered |
 | `HANDOFF.md` | Replaced with this note |
 
-No other source, test, Docker or CI changes.
+No source, test, Docker, CI or `.gitignore` changes. Everything else is identical to `main` @ `9ba4ffc`.
+
+## Evidence added (user-reported, not re-run by the AI)
+- Greenhouse / GitLab: HTTP 200, 251 jobs (`meta.total` 251). Lever / Meesho: HTTP 200, 49 postings, `skip` pagination tested (5 + 5 distinct IDs).
+  Ashby / OP Labs: HTTP 200, 5 jobs. Three trimmed 3-record fixtures kept outside Git (9,572 bytes in total).
+- The AI could not reach these hosts (proxy 403, endpoints refused by the session allowlist) and has not seen the raw JSON or fixture files.
+
+## Not covered (remaining, none blocks Phase 1)
+Fixtures not in the repo (job-data terms to review first); descriptions excluded so content-field parsing is untested; pagination
+only checked for Lever; no empty/closed/malformed cases; no automated integration tests. These are Phase 2 work.
+One unresolved observation: the hosted Greenhouse page showed about 48 postings to the AI versus 251 from the API (probably
+truncated or paginated page text; not checked).
 
 ## Checks
 | Check | Result |
 | --- | --- |
-| `.gitignore` no longer hides `Data/` (simulated Windows ignore-case) | PASS (AI workspace) |
-| Root `/data/` still ignored | PASS (AI workspace) |
-| `dotnet restore/build/test` | NOT RUN (no .NET SDK in the AI workspace) |
-| `docker compose build/up` | NOT RUN (not touched by this change; no Docker daemon access in the AI workspace) |
-| Frontend lint/test/build | NOT RUN this session (no frontend change; CI run #4 reported PASS) |
-| GitHub Actions after push | NOT RUN (unconfirmed until you push and report the run) |
+| Live ATS API calls (user's PC) | PASS (user-reported) |
+| Docs re-read for consistency with the Testing Plan and Notion Task Board | PASS (AI review, no tooling) |
+| `dotnet build/test`, `docker compose`, frontend tests, Actions | NOT RUN (docs only; no .NET SDK in the AI workspace) |
 
-## Known limitations
-- `AppDbContext.cs` was recreated from how it is used (`AddDbContext<AppDbContext>`, `db.Database.CanConnectAsync`). Your local file
-  may differ; keep yours if it does and only fix the ignore rule.
-- Phase 0 is **not** green: live Greenhouse/Lever/Ashby fixtures, Gmail, Adzuna/Jooble and NAS checks are still open.
-- `docs/phase0-feasibility.md` on `main` is still the old matrix (the phase0-gate docs change is not in `main`).
+## Status
+**Phase 0 is not green.** The user has not confirmed it. Criterion 3 is still open for Adzuna, Jooble, Gmail, OmniRoute, NAS and
+branch protection (verify or explicitly defer). Phase 1 has not been started.
 
 ## Your next steps
-1. Back up or check your local working tree at `C:\Users\Devan Shah\Repos\job-search-tracker`.
-2. Before extracting, check whether your local `src\JobSearchTracker.Api\Data\AppDbContext.cs` exists and copy it aside.
-3. Extract this ZIP into that folder, keeping `.git`. Then delete the 11 stray files if they are still present
-   (`git rm` them; they are tracked in `main`). If your local `AppDbContext.cs` differed, restore it over the ZIP version.
-4. Run `git status`: `src/JobSearchTracker.Api/Data/AppDbContext.cs` must appear as untracked/added (not missing, not ignored).
-   Then `dotnet build JobSearchTracker.slnx -c Release` and `dotnet test JobSearchTracker.slnx -c Release`.
-5. Commit and push yourself, open the Actions tab and report the backend/frontend/secret-scan result.
-6. Upload this ZIP to the Notion Project Hub as the latest snapshot after pushing.
+1. Back up or check `C:\Users\Devan Shah\Repos\job-search-tracker`.
+2. Extract this ZIP into the folder, keeping `.git`.
+3. Review `git status` and `git diff` (expect only `docs/phase0-feasibility.md` and `HANDOFF.md`), then commit and push yourself.
+4. Upload this ZIP to the Notion Project Hub as the latest snapshot after pushing.
+5. Tell the AI which remaining Phase 0 items you defer (with a reason), then confirm Phase 0 green.
