@@ -1,4 +1,4 @@
-# Handoff: Phase 1 data model (candidate, company list, search profile) - UNBUILT, see Checks
+# Handoff: Phase 1 data model (candidate, company list, search profile) - test fix after first CI run
 
 **Date:** 2026-11-14
 **Task:** Task Board "Data model: candidate, company list, search profile, with first EF Core migration" (Phase 1).
@@ -18,12 +18,12 @@
 ## Checks (actual results)
 | Check | Result |
 | --- | --- |
-| `dotnet build`, `dotnet test` (unit and database tests), `dotnet ef migrations has-pending-model-changes` | **NOT RUN** - no .NET SDK in the AI workspace. The C# has never been compiled. |
-| Hand-written SQL mirror of the migration on PostgreSQL 16 (not 17, not the EF migration) | PASS for: 6 tables; unique names per rule; NULL vs 0 work modes; version 0 and work mode 8 rejected; candidate/employer/list RESTRICT; profile and list CASCADE to join rows only |
-| Frontend lint/test/build, Docker, GitHub Actions on this branch | NOT RUN |
+| GitHub Actions, backend job, run 43592473495 (user-pasted log; the AI did not run it) | Build and the earlier steps completed. `dotnet test`: 46 passed, 1 failed, 0 skipped (47 total), including the database tests on PostgreSQL 17 |
+| The 1 failure | `NameNormalizerTests.Normalize_applies_the_documented_rule` for `U+0130 stanbul`: the test's expected value was wrong (NFKC recomposes U+0130; invariant lowering leaves it unchanged). Expectation corrected in this ZIP; production code unchanged |
+| Re-run after the fix, frontend job, Docker | NOT RUN by the AI (no .NET SDK or Docker here); CI must confirm |
 
 ## Risks to check first
-1. The migration, its Designer file and the model snapshot were written by hand. If CI's `has-pending-model-changes` step fails or the build fails, delete `src/JobSearchTracker.Api/Data/Migrations/` and run `dotnet ef migrations add InitialDataModel --project src/JobSearchTracker.Api --startup-project src/JobSearchTracker.Api`, then re-run the tests. (Rename the migration id in `SchemaTests` if it changes.)
+1. The migration, Designer and snapshot were written by hand. The first CI run reported no build failure; if a later run reports a pending-model-changes failure, delete `src/JobSearchTracker.Api/Data/Migrations/` and run `dotnet ef migrations add InitialDataModel --project src/JobSearchTracker.Api --startup-project src/JobSearchTracker.Api`, then re-run the tests. (Rename the migration id in `SchemaTests` if it changes.)
 2. Database tests fail, not skip, without `JOBSEARCH_TEST_ADMIN_CONNECTION` (see `docs/development.md`).
 3. Assumptions to confirm are listed in `docs/data-model.md`: `CandidateId` only on profiles; a list selected by a profile cannot be deleted; list `DefaultWorkModes` is non-null.
 4. AC6 and AC9 were approved but their text was not available; they are not covered explicitly.

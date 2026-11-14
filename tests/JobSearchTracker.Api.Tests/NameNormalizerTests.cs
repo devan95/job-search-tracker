@@ -12,7 +12,7 @@ public class NameNormalizerTests
     [InlineData("ACME, Inc.", "acme, inc.")]
     [InlineData("Ａcme", "acme")] // full-width A -> NFKC -> a
     [InlineData("Café", "café")] // e + combining acute -> precomposed
-    [InlineData("İstanbul", "i̇stanbul")] // invariant lowering of dotted capital I, not Turkish
+    [InlineData("\u0130stanbul", "\u0130stanbul")] // U+0130 stays as is: NFKC recomposes it and invariant lowering does not map it to "i" (that is the Turkish rule)
     public void Normalize_applies_the_documented_rule(string input, string expected) =>
         Assert.Equal(expected, NameNormalizer.Normalize(input));
 
