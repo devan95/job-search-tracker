@@ -38,7 +38,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             b.ToTable("company_lists", t =>
             {
                 t.HasCheckConstraint("CK_company_lists_name_not_blank", "char_length(btrim(\"Name\")) > 0");
-                t.HasCheckConstraint("CK_company_lists_default_work_modes_range", "\"DefaultWorkModes\" BETWEEN 0 AND 7");
+                t.HasCheckConstraint("CK_company_lists_default_work_modes_range", $"\"DefaultWorkModes\" BETWEEN 0 AND {WorkModesLimits.AllModes}");
             });
             b.HasKey(x => x.Id);
             b.Property(x => x.Name).IsRequired().HasMaxLength(NameNormalizer.MaxLength);
@@ -63,7 +63,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             {
                 t.HasCheckConstraint("CK_search_profiles_name_not_blank", "char_length(btrim(\"Name\")) > 0");
                 t.HasCheckConstraint("CK_search_profiles_profile_version_min", "\"ProfileVersion\" >= 1");
-                t.HasCheckConstraint("CK_search_profiles_work_modes_range", "\"WorkModes\" IS NULL OR \"WorkModes\" BETWEEN 0 AND 7");
+                t.HasCheckConstraint("CK_search_profiles_work_modes_range", $"\"WorkModes\" IS NULL OR \"WorkModes\" BETWEEN 0 AND {WorkModesLimits.AllModes}");
             });
             b.HasKey(x => x.Id);
             b.Property(x => x.Name).IsRequired().HasMaxLength(NameNormalizer.MaxLength);

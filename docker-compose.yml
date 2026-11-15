@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: jobsearch
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env (copy .env.example)}
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:${DB_HOST_PORT:-5432}:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:
@@ -18,7 +18,25 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # One-shot schema step. It is NOT started by `docker compose up` (profile "tools"); run it explicitly:
+  #   docker compose run --rm migrate
+  # It applies pending EF Core migrations and exits. Safe to repeat; it never drops data.
+  migrate:
+    profiles: ["tools"]
+    image: jobsearchtracker-api:local
+    build:
+      context: .
+      dockerfile: src/JobSearchTracker.Api/Dockerfile
+    command: ["--MigrateOnly=true"]
+    environment:
+      ConnectionStrings__Default: Host=db;Port=5432;Database=jobsearch;Username=jobsearch;Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
   api:
+    image: jobsearchtracker-api:local
     build:
       context: .
       dockerfile: src/JobSearchTracker.Api/Dockerfile

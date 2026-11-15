@@ -90,4 +90,4 @@ dotnet ef migrations has-pending-model-changes --project src/JobSearchTracker.Ap
 ```
 
 The first command needs `ConnectionStrings:Default` (see `development.md`). The migration is not applied automatically at
-startup. To undo it on a throw-away database: `dotnet ef database update 0 ...`.
+startup; for the Docker stack use `docker compose run --rm migrate` (see "Database schema (migrations)" in `development.md`). To undo it on a throw-away database: `dotnet ef database update 0 ...`.

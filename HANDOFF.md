@@ -1,47 +1,38 @@
-# Handoff: restore CI workflow, refresh docs (no application code changed)
+# Handoff: repository hygiene (migration step, work-mode constant, CI hardening)
 
-**Date:** 2026-11-14
-**Task:** Restore `.github/workflows/ci.yml` (deleted in commit `b1b8db6`, "Phase1. Part2") and refresh stale repository docs.
-**Base:** `main` @ `b1b8db6`, read via the GitHub connector. Nothing was committed or pushed by the AI.
+**Base:** `main` @ `4791f6d` ("Removed duplicate info"); CI run #11 (43623072352) succeeded there. Nothing was committed or pushed by the AI.
+**Scope:** maintenance only. No product features.
 
-## Why CI went missing
-`ci.yml` existed through `e350bb6` and was the only file deleted by `b1b8db6`. That commit's handoff says the ZIP it was built
-from had no `.github/` folder, and the ZIP it produced had none either. Extracting a ZIP does not delete files, so the local
-replace step most likely removed files that were absent from the ZIP (the same happened to the early scaffold files in
-`8211cab`). This is an inference; the Part 2 ZIP and the local steps were not visible to the AI.
-**Consequence:** no CI ran for `b1b8db6`, so the Backend API code (54 database tests) has never run in CI.
-
-## Changed in this ZIP (compared with `main` @ `b1b8db6`)
+## Changed
 | File | Change |
 | --- | --- |
-| `.github/workflows/ci.yml` | **Restored**, byte-identical to the version in `e350bb6` (and `089d01b`). Not edited. |
-| `.github/pull_request_template.md` | New: checks, safety and "no unexpected deleted files" checklist |
-| `README.md` | Rewritten: states what exists today (was still "Phase 0, no entities, not built yet"); layout now lists `.github/`, `.config/`, docs |
-| `CLAUDE.md` | Commands now include `dotnet tool restore`, database tests and the EF model check; new "ZIP delivery checklist" |
-| `docs/phase0-feasibility.md` | One cell: criterion 2 now cites commit `9dfee0a` instead of "the change that adds this section" |
-| `HANDOFF.md` | Replaced with this note |
+| `src/JobSearchTracker.Api/Program.cs` | Opt-in `--MigrateOnly=true` mode: applies pending EF migrations and exits. Normal startup is unchanged and never migrates. |
+| `docker-compose.yml` | New one-shot `migrate` service (profile `tools`, not started by `up`); `api` and `migrate` share image `jobsearchtracker-api:local`; db host port overridable via `DB_HOST_PORT` (default 5432). |
+| `docs/development.md`, `docs/data-model.md`, `.env.example` | Windows CMD migration workflow, disposable-database verification steps, `DB_HOST_PORT`. |
+| `src/JobSearchTracker.Api/Data/AppDbContext.cs` | Both work-mode check constraints now use `WorkModesLimits.AllModes` (value 7, SQL text identical, so no new migration is expected). |
+| `.github/workflows/ci.yml` | Added `timeout-minutes` (15/10/5), and `concurrency` that cancels superseded pull-request runs only. Jobs and steps are otherwise unchanged. |
+| `.github/dependabot.yml` | New: weekly updates for NuGet, npm, GitHub Actions, Docker and Docker Compose. |
+| `HANDOFF.md` | Replaced (it was stale: old base `b1b8db6`, "never ran in CI"). |
 
-**Deleted files: none.** No source, test, migration, Docker, `.gitignore` or web changes.
+**Deleted files: none.** `README.md` and `CLAUDE.md` untouched.
 
-## Checks
+Decision for you: migrations stay explicit (`docker compose run --rm migrate`), not automatic at startup. Say so if you want automatic migration instead.
+
+## Checks (honest status)
 | Check | Result |
 | --- | --- |
-| ZIP tree compared with `b1b8db6`: only the files above differ; no tracked file missing | PASS (AI, file comparison) |
-| `ci.yml` byte-identical to `e350bb6` | PASS (AI, `cmp`) |
-| `dotnet build`, `dotnet test`, frontend checks, Docker, GitHub Actions | NOT RUN (docs/config only; no .NET SDK or Docker in the AI workspace) |
-
-## Review notes (not changed, no compiler available)
-- `WorkModesLimits.AllModes` in `Data/Entities.cs` is unused; the check constraints in `AppDbContext.cs` hard-code `7`.
-  Either use it or delete it in a later change that can be compiled.
-- Suggestions for later, not applied: Dependabot for NuGet/npm/Actions/Docker, and CI niceties (timeouts, concurrency,
-  pinning action versions). `ci.yml` was deliberately left untouched.
+| `docker compose config` (default and `--profile tools`) | PASS (AI): `up` services are db, api, worker; `migrate` only with the profile |
+| YAML parse of `ci.yml`, `dependabot.yml`, `docker-compose.yml` | PASS (AI) |
+| File list vs `4791f6d`: only the files above differ, none missing | PASS (AI) |
+| `dotnet build`, `dotnet test`, `dotnet ef migrations has-pending-model-changes` | NOT RUN (no .NET SDK in the AI workspace) |
+| Fresh-database init, existing-database upgrade, repeat run | NOT RUN (needs .NET and Docker daemon) |
+| Frontend `npm ci/lint/test/build` | NOT RUN (no frontend change) |
+| GitHub Actions / secret scan | NOT RUN (runs after you push) |
+| Action SHA pinning | NOT DONE: SHAs could not be verified from here; Dependabot keeps version tags current |
 
 ## Your next steps
-1. Back up or check `C:\Users\Devan Shah\Repo\job-search-tracker` and make sure your clone is on `main` @ `b1b8db6` (or newer).
-2. Extract this ZIP over the folder, keeping `.git`. **Do not delete files first.**
-3. Run `git status`. Expect: new `.github/workflows/ci.yml` and `.github/pull_request_template.md`; modified `README.md`,
-   `CLAUDE.md`, `HANDOFF.md`, `docs/phase0-feasibility.md`; **no deleted (`D`) files**. Stop and ask if you see any `D`.
-4. Prefer a branch and pull request so CI runs before merge. Commit and push yourself.
-5. Check the CI run. It will be the first CI run for the Backend API code, so it may report compile or test failures.
-   Paste the log to the AI if it fails.
-6. Upload this ZIP to the Notion Project Hub as the latest snapshot after pushing.
+1. Back up the repo folder. Extract this ZIP over it, keeping `.git`; do not delete files first.
+2. `git status`: expect modified `src/…/Program.cs` and `AppDbContext.cs`, `docker-compose.yml`, `.env.example`, `docs/`, `.github/workflows/ci.yml`, `HANDOFF.md` and new `.github/dependabot.yml`; no `D`.
+3. Run `dotnet tool restore`, `dotnet build JobSearchTracker.slnx`, `dotnet test JobSearchTracker.slnx` and the EF model check (must report no pending changes).
+4. Verify the migration workflow on a disposable project using the steps in `docs/development.md` ("Verifying the workflow on a disposable database").
+5. Push a branch, open a PR, and check CI. Report the run and any log lines if it fails.

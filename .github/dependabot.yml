@@ -1,0 +1,41 @@
+# Weekly dependency update pull requests. They run the normal CI and are merged by the user, never automatically.
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directories:
+      - "/"                                  # .config/dotnet-tools.json (dotnet-ef)
+      - "/src/JobSearchTracker.Api"
+      - "/src/JobSearchTracker.Worker"
+      - "/tests/JobSearchTracker.Api.Tests"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      nuget-minor-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: npm
+    directory: "/web"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker
+    directories:
+      - "/src/JobSearchTracker.Api"
+      - "/src/JobSearchTracker.Worker"
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker-compose
+    directory: "/"
+    schedule:
+      interval: weekly

@@ -12,11 +12,17 @@
 copy .env.example .env        (Windows CMD; use cp on macOS/Linux)
 ```
 
-Edit `.env` and set `POSTGRES_PASSWORD` (letters and digits only). Then:
+Edit `.env` and set `POSTGRES_PASSWORD` (letters and digits only). Then start the database, create or upgrade the schema,
+and start the stack (details in "Database schema (migrations)" below):
 
 ```
+docker compose up -d --wait db
+docker compose run --rm migrate
 docker compose up --build
 ```
+
+The schema is **not** created automatically. `/api/health/ready` only proves that PostgreSQL answers; it does not prove that the
+tables exist. On a fresh database the management API fails until `migrate` has run.
 
 - API: http://127.0.0.1:5080/api/health/ready
 - PostgreSQL: 127.0.0.1:5432 (localhost only)
@@ -45,6 +51,51 @@ dotnet run --launch-profile http
 
 Local runs listen on http://127.0.0.1:5080 (set in `Properties/launchSettings.json`). Do not put a `Urls` setting
 in `appsettings.json`: it overrides `ASPNETCORE_URLS` and breaks the Docker container's `0.0.0.0:8080` listener.
+
+## Database schema (migrations)
+
+Policy: the schema changes only when you ask for it. The API never migrates at startup, and `EnsureCreated()` is not used
+(it bypasses EF migrations). The explicit step is a one-shot Compose service, `migrate`, which runs the API image with
+`--MigrateOnly=true`: it applies pending EF Core migrations and exits without starting the web server. It is behind the
+Compose profile `tools`, so `docker compose up` never starts it.
+
+Fresh or existing database (Windows CMD, from the repository root, with `.env` set):
+
+```
+docker compose up -d --wait db
+docker compose run --rm migrate
+docker compose exec db psql -U jobsearch -d jobsearch -c "\dt"
+```
+
+- Fresh database: creates the six tables and `__EFMigrationsHistory`.
+- Existing database already at the current migration: nothing to apply; data is untouched.
+- Existing database behind the latest migration: applies only the missing migrations, in order.
+- Running `migrate` again is always safe (idempotent). A failed migration exits non-zero; read the log before retrying.
+- It never drops tables or volumes. Take a backup before applying a migration to a database you care about.
+
+Without Docker for the API (Option B) use `dotnet ef database update --project src/JobSearchTracker.Api --startup-project src/JobSearchTracker.Api`
+with `ConnectionStrings:Default` set.
+
+### Verifying the workflow on a disposable database
+
+Never test this against your real database and never run `docker compose down -v` in your normal project. Use a separate
+Compose project name (own volume) and a different host port:
+
+```
+set COMPOSE_PROJECT_NAME=jst_verify
+set DB_HOST_PORT=55432
+set POSTGRES_PASSWORD=<throwaway letters and digits>
+echo %COMPOSE_PROJECT_NAME%
+docker compose up -d --wait db
+docker compose run --rm migrate
+docker compose exec db psql -U jobsearch -d jobsearch -c "\dt"
+docker compose run --rm migrate
+docker compose down -v
+```
+
+Expected: the first `migrate` applies `InitialDataModel`, `\dt` lists six tables plus `__EFMigrationsHistory`, and the second
+`migrate` applies nothing. `down -v` is safe here only because `COMPOSE_PROJECT_NAME` is `jst_verify` (check the `echo` line first).
+Close the CMD window afterwards so the variables do not leak into normal use.
 
 ## Tests
 

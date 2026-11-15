@@ -23,6 +23,16 @@ builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadReq
 
 var app = builder.Build();
 
+// Explicit, opt-in migration step: `dotnet JobSearchTracker.Api.dll --MigrateOnly=true` applies pending EF Core
+// migrations and exits without starting the web server. Normal startup never changes the schema.
+// Migrate() is idempotent: with no pending migrations it does nothing, and it never drops data.
+if (app.Configuration.GetValue<bool>("MigrateOnly"))
+{
+    using var scope = app.Services.CreateScope();
+    scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.Migrate();
+    return;
+}
+
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 
