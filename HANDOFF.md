@@ -1,27 +1,22 @@
-# Handoff: documentation de-duplication, CI secret-scan permission, Dependabot majors
+# Handoff: shrink Phase 0 record, ignore HANDOFF.md
 
-**Base:** `main` @ `e4755ed` ("Hygine"), read via GitHub. Nothing was committed or pushed by the AI.
+**Base:** `main` @ `2871c64` ("Cleanup"), CI run 43669264079 green (read via GitHub). Nothing was committed or pushed by the AI.
 
 ## Changed
 | File | Change |
 | --- | --- |
-| `.github/workflows/ci.yml` | `secret-scan` job gets `pull-requests: read`. Without it gitleaks fails on every pull request ("Resource not accessible by integration"), as seen on Dependabot PRs 1-14. |
-| `.github/dependabot.yml` | Ignore semver-major bumps for `dotnet/*` Docker images, `dotnet-ef`, `Microsoft.*`, `Npgsql.*` and `@types/node` (app targets .NET 10, Node 22). |
-| `docs/data-model.md` | Migration commands and the deferred-requirements table replaced by links (owned by development.md and Notion). |
-| `docs/api.md` | Tests paragraph replaced by a link to development.md. |
-| `HANDOFF.md` | Replaced. |
+| `docs/phase0-feasibility.md` | Rewritten as a short evidence record (11 KB to about 5 KB). Phase 0 gate text removed; the roadmap and status are in Notion. |
+| `.gitignore` | Adds `/HANDOFF.md` (it is a per-delivery note shipped in the ZIP, as the Work Protocol says). |
 
-**Deleted files: none.** No application code changed.
+**Deleted files: none** in the ZIP. One local step is needed so Git stops tracking the file (below).
 
 ## Checks
 | Check | Result |
 | --- | --- |
-| YAML parse of `ci.yml` and `dependabot.yml` | PASS (AI) |
-| File list vs `e4755ed`: only the files above differ, none missing | PASS (AI) |
-| Secret-scan fix on a real pull request | NOT RUN (needs a push) |
-| `dotnet build/test`, frontend checks | NOT RUN (no code change) |
+| File list vs `2871c64`: only the files above differ, none missing | PASS (AI) |
+| Docs only: build, tests | NOT RUN (no code change) |
 
 ## Your next steps
-1. Extract over your clone without deleting files first; `git status` must show only the files above, no `D`.
-2. Push a branch and open a PR; confirm `secret-scan` is now green.
-3. Then merge Dependabot PRs 2, 3, 6 and 1 (see the chat note); close 4, 5, 7, 8, 9, 11, 12; review 10, 13, 14.
+1. Extract the ZIP over your clone without deleting files first.
+2. Run `git rm --cached HANDOFF.md` once, then `git status`: expect `.gitignore` and `docs/phase0-feasibility.md` modified and `HANDOFF.md` deleted from the index (the file stays on disk). Stop if any other `D` appears.
+3. Commit and push a branch; confirm CI is green.
