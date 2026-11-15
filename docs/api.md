@@ -128,6 +128,4 @@ POST /api/company-lists
 
 ## Tests
 
-`ApiTestBase` runs the real API against its own migrated PostgreSQL database per test (same rules as the other database
-tests: they fail, never skip, without `JOBSEARCH_TEST_ADMIN_CONNECTION`; see development.md). The tests cover successful
-operations, invalid input, normalized uniqueness conflicts, association changes and every delete restriction.
+The API tests are database tests; see [development.md](development.md) ("Tests") for the required environment.

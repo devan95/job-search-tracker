@@ -13,6 +13,13 @@ updates:
     groups:
       nuget-minor-patch:
         update-types: ["minor", "patch"]
+    ignore:   # the app targets .NET 10 (LTS); move to a new .NET major as one deliberate task
+      - dependency-name: "dotnet-ef"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "Microsoft.*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "Npgsql.*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: npm
     directory: "/web"
@@ -22,6 +29,9 @@ updates:
     groups:
       npm-minor-patch:
         update-types: ["minor", "patch"]
+    ignore:   # keep @types/node on the Node major used by CI and Docker
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: "/"
@@ -34,6 +44,9 @@ updates:
       - "/src/JobSearchTracker.Worker"
     schedule:
       interval: weekly
+    ignore:   # .NET image major must match global.json and the net10.0 target
+      - dependency-name: "dotnet/*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: docker-compose
     directory: "/"

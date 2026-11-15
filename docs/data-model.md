@@ -61,16 +61,7 @@ approved "proposed cascade/restrict relationships" (U8); see "Assumptions to con
 
 ## Deferred requirements (AC7)
 
-| Requirement | Source | Deferred to |
-| --- | --- | --- |
-| Location sets (named, reusable, with city/state/country/remote scopes) | Product Requirements section 2 | Later phase; Phase 1 uses `LocationLabel` only |
-| Role lists, aliases and equivalent titles | Product Requirements section 2 | Later phase; not in the six tables |
-| Role lists and location sets as part of a Search Profile | Product Requirements section 3 | Later phase |
-| Employer website, career URL, ATS and canonical resolution | Product Requirements section 2 | Phase 2 |
-| Source catalog and independently enabled sources per profile | Product Requirements sections 3-4; Testing Plan "Search profiles" | Phase 2 |
-| Multiline list entry, duplicate preview before saving | Product Requirements section 2; Testing Plan "Multiline lists" | Later Phase 1 task (UI/API), not this data-model task |
-| Automatic `ProfileVersion` increment | U9 | Not in Phase 1 |
-| API endpoints for candidates, employers, lists and profiles | - | Delivered by the Backend API task: see [api.md](api.md). UI for any of the above stays a later Phase 1 task |
+Not in this model: location sets, role lists and aliases, employer website/career URL/ATS, source catalog and per-source enablement, automatic `ProfileVersion` increment. Their owner and phase are on the Notion Task Board and Product Requirements; the API is in [api.md](api.md).
 
 ## Assumptions to confirm
 
@@ -83,11 +74,4 @@ These were not spelled out in the approval text this work was based on:
 
 ## Applying and checking the migration
 
-```
-dotnet tool restore
-dotnet ef database update --project src/JobSearchTracker.Api --startup-project src/JobSearchTracker.Api
-dotnet ef migrations has-pending-model-changes --project src/JobSearchTracker.Api --startup-project src/JobSearchTracker.Api
-```
-
-The first command needs `ConnectionStrings:Default` (see `development.md`). The migration is not applied automatically at
-startup; for the Docker stack use `docker compose run --rm migrate` (see "Database schema (migrations)" in `development.md`). To undo it on a throw-away database: `dotnet ef database update 0 ...`.
+See "Database schema (migrations)" and "Tests" in [development.md](development.md). To undo on a throw-away database: `dotnet ef database update 0 --project src/JobSearchTracker.Api --startup-project src/JobSearchTracker.Api`.

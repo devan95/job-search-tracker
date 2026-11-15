@@ -69,6 +69,9 @@ jobs:
 
   secret-scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read   # gitleaks-action lists PR commits; without this it fails with "Resource not accessible by integration"
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
