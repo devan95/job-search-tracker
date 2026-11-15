@@ -7,7 +7,7 @@ RUN dotnet restore src/JobSearchTracker.Api/JobSearchTracker.Api.csproj
 COPY src/JobSearchTracker.Api/ src/JobSearchTracker.Api/
 RUN dotnet publish src/JobSearchTracker.Api/JobSearchTracker.Api.csproj -c Release -o /app
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:11.0 AS runtime
 WORKDIR /app
 COPY --from=build /app ./
 ENV ASPNETCORE_URLS=http://0.0.0.0:8080
