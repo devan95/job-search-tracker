@@ -31,7 +31,7 @@ Follow [`docs/development.md`](docs/development.md) for prerequisites, configura
 
 ## Project documentation and decisions
 
-- **Product requirements, approved decisions, roadmap, task status and handoffs:** [Notion Project Hub](https://app.notion.com/p/41544a92926f81dab0b7fc1f6451e23f).
+- **Product requirements, approved decisions, roadmap, task status, account lanes (AC1 to AC5) and task notes:** [Notion Project Hub](https://app.notion.com/p/41544a92926f81dab0b7fc1f6451e23f).
 - **Source code, API contracts, data model, development instructions and CI:** this repository.
 
 Do not copy detailed Notion requirements or project status into this README. Do not copy repository API/schema/setup documentation into Notion. Update the authoritative source for the subject and link to it from the other system.

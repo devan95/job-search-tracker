@@ -135,3 +135,25 @@ endpoints, error semantics and examples. Its tests are database tests (they need
 | --- | --- |
 | `GET /api/health/live` | Process is up. Never touches the database. |
 | `GET /api/health/ready` | `200 {status: ok, database: ok}` when PostgreSQL answers; `503 {status: degraded, database: unavailable}` otherwise. |
+
+## Snapshot for an AI session
+
+Every AI session (accounts AC1 to AC5) starts from a ZIP of current `main`. Make it with `git archive`, which includes
+hidden files such as `.github/` and `.config/` and leaves out `.git/`, local files and build output:
+
+```
+git switch main
+git pull
+git archive --format=zip --prefix=job-search-tracker/ -o ../job-search-tracker-main.zip HEAD
+```
+
+The commit id is stored in the ZIP comment: `unzip -z ../job-search-tracker-main.zip` prints it. Attach the ZIP to
+the session, or make sure the session can read GitHub. Make a fresh ZIP after each merge; an old snapshot is the base of
+a stale branch.
+
+## Applying a delivered ZIP (one branch per task)
+
+Each delivery names its base commit and branch (`ac<n>/<task>`) in `HANDOFF.md`. Create the branch from that commit,
+extract the ZIP over the working folder without deleting files first, keep `.git`, then run `git status`. Stop and ask
+if an unexpected deleted (`D`) file appears. Review `git diff`, run the checks, commit, push and open one pull request
+per branch. When two pull requests touch the same lines, GitHub shows the conflict and the later one rebases.
