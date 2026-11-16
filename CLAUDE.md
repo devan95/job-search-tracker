@@ -7,7 +7,7 @@ Project: Job Search & Application Tracker (local-first; .NET 10, React/TypeScrip
 1. Open the [Notion Project Hub](https://app.notion.com/p/41544a92926f81dab0b7fc1f6451e23f).
 2. Up to five accounts (AC1 to AC5) work in parallel, each on its own Task Board rows. Read the Notion page "Account Lanes (AC1 to AC5): Work Queue and Prompt" for your lane, the claim rules and the generic session prompt. Claim your row on the Task Board before you start.
 3. Read the relevant confirmed requirement/decision and the exact Task Board item, including **Brief for the next account**. Follow the Notion Work Protocol and Testing Plan.
-4. Connect to `devan95/job-search-tracker`; verify the intended branch, latest commit, CI result and actual files. Inspect the real working tree and preserve uncommitted work. If a user ZIP is attached, follow the Notion Attached ZIP rule before using it.
+4. Read `devan95/job-search-tracker` (public) directly: shallow clone of the latest `main` (`git clone --depth 1`), or single files from `raw.githubusercontent.com`; do not use a repository attached as context in a Claude Project. Record the commit id as your base; verify the latest commit, CI result and actual files. Inspect the real working tree and preserve uncommitted work. If a user ZIP is attached, follow the Notion Attached ZIP rule before using it.
 
 ## Documentation ownership
 
