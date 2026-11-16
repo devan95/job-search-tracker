@@ -7,9 +7,6 @@ secrets.json
 *.pfx
 *.key
 
-# Delivery note for one change set; shipped inside the ZIP, not committed (history is the Notion Handoff Log)
-/HANDOFF.md
-
 # Local data, logs, backups
 *.log
 logs/
