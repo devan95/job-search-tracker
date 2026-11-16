@@ -4,10 +4,11 @@ Project: Job Search & Application Tracker (local-first; .NET 10, React/TypeScrip
 
 ## Read before starting
 
-1. Open the [Notion Project Hub](https://app.notion.com/p/41544a92926f81dab0b7fc1f6451e23f).
-2. Up to five accounts (AC1 to AC5) work in parallel, each on its own Task Board rows. Read the Notion page "Account Lanes (AC1 to AC5): Work Queue and Prompt" for your lane, the claim rules and the generic session prompt. Claim your row on the Task Board before you start.
-3. Read the relevant confirmed requirement/decision and the exact Task Board item, including **Brief for the next account**. Follow the Notion Work Protocol and Testing Plan.
+1. The [Notion Project Hub](https://app.notion.com/p/41544a92926f81dab0b7fc1f6451e23f) is for navigation; open it only if needed.
+2. Read the Notion [Session Card (AC1 to AC5)](https://app.notion.com/p/41a44a92926f81c1907bd07e349be105): up to five accounts work in parallel, each on its own Task Board rows, and the card holds your lane, the claim rules and the delivery steps. Open "Account Lanes (AC1 to AC5): Work Queue and Prompt" or the Work Protocol in full only when the card does not answer. Claim your row on the Task Board before you start.
+3. Read the relevant confirmed requirement/decision and the exact Task Board item, including **Brief for the next account**. Read the Testing Plan for the checks you will run.
 4. Connect to `devan95/job-search-tracker`; verify the intended branch, latest commit, CI result and actual files. Inspect the real working tree and preserve uncommitted work. If a user ZIP is attached, follow the Notion Attached ZIP rule before using it.
+5. If your row is already In progress under your label, read its Notes and continue; do not redo finished steps.
 
 ## Documentation ownership
 
