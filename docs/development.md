@@ -73,7 +73,7 @@ docker compose exec db psql -U jobsearch -d jobsearch -c "\dt"
 - Running `migrate` again is always safe (idempotent). A failed migration exits non-zero; read the log before retrying.
 - It never drops tables or volumes. Take a backup before applying a migration to a database you care about.
 
-Without Docker for the API (Option B) run `dotnet tool restore` once, then use `dotnet ef database update --project src/JobSearchTracker.Api --startup-project src/JobSearchTracker.Api`
+Without Docker for the API (Option B) use `dotnet ef database update --project src/JobSearchTracker.Api --startup-project src/JobSearchTracker.Api`
 with `ConnectionStrings:Default` set.
 
 ### Verifying the workflow on a disposable database
@@ -102,7 +102,7 @@ Close the CMD window afterwards so the variables do not leak into normal use.
 ```
 dotnet tool restore
 dotnet test JobSearchTracker.slnx
-cd web && npm ci && npm run lint && npm test && npm run build
+cd web && npm test
 ```
 
 Tests marked `Category=Database` need a real PostgreSQL server. They create a uniquely named database per test, apply the
@@ -138,14 +138,20 @@ endpoints, error semantics and examples. Its tests are database tests (they need
 
 ## Code base for an AI session
 
-Sessions (accounts AC1 to AC5) take the latest `main` from GitHub themselves; the repository is public. If GitHub cannot be
-reached, a session reads the repository attached as context in its Project. In that case press Sync on the Project's
-GitHub card after each merge and give the session the short commit id of `main` before it delivers.
+The repository is public. Every AI session (accounts AC1 to AC5) takes the latest `main` itself: a shallow clone
+(`git clone --depth 1 https://github.com/devan95/job-search-tracker`), or single files from
+`raw.githubusercontent.com/devan95/job-search-tracker/main/<path>`, and records the commit id as its base. No archive of
+the repository needs to be attached. The session never commits or pushes; it delivers changed files (see below).
 
 ## Applying a delivery (one branch per task)
 
-Each delivery names its base commit and branch (`ac<n>/<task>`) in its final message and presents each changed or added file
-complete at its repo path. Create the branch from that commit, copy each file to its repo path (create folders where
-needed), delete only the files listed as deleted, keep `.git`, then run `git status`. Stop and ask if it shows a changed
-or deleted file that is not in the delivery list. Review `git diff`, run the checks, commit, push and open one pull request
-per branch. When two pull requests touch the same lines, GitHub shows the conflict and the later one rebases.
+A delivery lists only the changed and added files, each complete and at its repo path, and its final message names the
+base commit, the branch (`ac<n>/<task>`) and the deleted files (or `Deleted files: none`). Back up or check your local
+tree, then:
+
+1. Create the branch from the base commit: `git switch -c ac<n>/<task> <BASE_COMMIT>`.
+2. Copy each delivered file to its repo path (create folders where needed). Delete only the files listed as deleted.
+   Keep `.git` and local-only files.
+3. Run `git status`. Stop and ask if it shows a changed or deleted file that is not in the delivery list.
+4. Review `git diff`, run the checks, commit, push and open one pull request per branch. When two pull requests touch
+   the same lines, GitHub shows the conflict and the later one rebases.
