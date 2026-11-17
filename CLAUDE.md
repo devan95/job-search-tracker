@@ -44,3 +44,19 @@ Database tests require PostgreSQL and `JOBSEARCH_TEST_ADMIN_CONNECTION`; see `do
 ## Delivery
 
 Follow the current Notion Work Protocol (section 7) for branch, review and delivery requirements. Deliver only the changed and added files, each complete and at its repo path, never a patch, a diff, an archive or the whole tree. Compare the delivered list with your own diff against the base: a changed file missing from the delivery is a blocker, and a file you did not change must not be in it. Hidden files count (`.github/`, `.config/`, `.gitignore`, `.env.example`, and so on). In the final message give the base commit, the branch, the checks and `Deleted files: none` or the full paths of deleted files. Exclude `.git`, secrets, real `.env` files, candidate data, local databases, caches and build artifacts. The user performs the Git commit/push unless explicitly authorized otherwise; the copy steps are in [`docs/development.md`](docs/development.md), section "Applying a delivery".
+
+## PR review submission workflow
+
+For any PR review, first read and follow [`.claude/skills/github-pr-review/SKILL.md`](.claude/skills/github-pr-review/SKILL.md). The skill defines the review checklist, finding format, severity, JSON payload and ZIP packaging rules.
+
+- The reusable Windows runner is `tools/github-review/submit-review.cmd` and `tools/github-review/submit-review.ps1`. The payload example is `tools/github-review/review.example.json`.
+- Do not submit the review directly through a GitHub connector, API or browser. Prepare a downloadable ZIP containing exactly these three files:
+  - `review.json`
+  - `submit-review.cmd`
+  - `submit-review.ps1`
+- The JSON must identify the repository, PR number, exact current 40-character PR head SHA, event, summary body and inline comments. Never invent paths or line references; each inline comment must be valid against the current PR diff.
+- Use `COMMENT` by default. For AC6 (the independent reviewer), `COMMENT` is the only permitted event. Never use `APPROVE` or `REQUEST_CHANGES` for AC6.
+- The user extracts the ZIP and double-clicks `submit-review.cmd`. The runner must verify GitHub CLI (`gh`) is installed and authenticated, confirm the PR is open, and confirm the current PR head SHA exactly matches `review.json`. If the PR changed, stop and regenerate the review.
+- The runner displays the complete review and requires the user to type `SUBMIT`. Nothing is posted before that confirmation. It submits one GitHub review containing the summary and inline comments.
+- Do not claim submission until the runner reports success and returns the GitHub review URL. Do not paste the full review into chat as a substitute for the ZIP.
+- The review ZIP is not a code-delivery ZIP: it must not create branches, modify source files, commit, push or create a PR. Never include tokens, credentials, real candidate data or unrelated files.

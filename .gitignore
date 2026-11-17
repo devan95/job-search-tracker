@@ -23,6 +23,7 @@ obj/
 *.suo
 .vs/
 TestResults/
+/coverage/
 *.trx
 
 # Node / web

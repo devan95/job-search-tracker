@@ -124,6 +124,17 @@ CI runs the same tests against a PostgreSQL 17 service and also runs
 After changing the model, add a migration: `dotnet ef migrations add <Name> --project src/JobSearchTracker.Api --startup-project src/JobSearchTracker.Api`
 (with `ConnectionStrings:Default` set). The data model is described in `data-model.md`.
 
+## Coverage reports (SonarQube Cloud)
+
+The `SonarQube Cloud analysis` CI job runs both test suites with coverage between `begin` and `end` of the analysis and imports
+the reports. No coverage threshold is enforced until a baseline has been measured.
+
+- Backend: `coverlet.collector` writes OpenCover XML to `coverage/dotnet/<run id>/coverage.opencover.xml`
+  (`sonar.cs.opencover.reportsPaths`). Locally: `dotnet test JobSearchTracker.slnx --collect:"XPlat Code Coverage" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover`.
+- Frontend: `npm run test:coverage` (from `web/`, Vitest with the V8 provider) writes `web/coverage/lcov.info`
+  (`sonar.javascript.lcov.reportPaths`). The job rewrites the `SF:` paths to start with `web/` before the analysis ends.
+- Both output folders (`coverage/` and `web/coverage/`) are git-ignored.
+
 ## Management API
 
 Candidates, employers, company lists and search profiles are managed through `/api/...`; see [api.md](api.md) for the
@@ -155,3 +166,42 @@ tree, then:
 3. Run `git status`. Stop and ask if it shows a changed or deleted file that is not in the delivery list.
 4. Review `git diff`, run the checks, commit, push and open one pull request per branch. When two pull requests touch
    the same lines, GitHub shows the conflict and the later one rebases.
+
+## Applying a delivery with the runner (Windows)
+
+`tools/delivery/run-delivery.cmd` automates the manual procedure above. A delivery is a folder with only the changed and
+added files at their repo paths, plus `delivery-manifest.json` (base commit, branch, commit subject, PR title, `files`,
+`deleted`), `commit.txt`, `pr-title.txt` and `pr.txt`. If it arrives as a ZIP, extract it outside the clone first. The
+runner is kept in the repository, not in the delivery.
+
+1. Put the delivery folder outside the clone.
+2. Run `tools\delivery\run-delivery.cmd` and either drag the delivery folder onto it or paste the folder path when asked.
+3. The script runs without a confirmation prompt. It stops, without changing anything, when:
+   - Git or `gh` is missing, or `gh` is not authenticated;
+   - the manifest or a path is invalid or unsafe, or the folder contains a file that is not in the manifest;
+   - the clone has uncommitted changes, or the current branch has commits that are not pushed;
+   - local `main` is ahead of or diverged from `origin/main`;
+   - the manifest base commit is not the current `origin/main`, or the target branch already exists.
+4. Otherwise it fetches `origin`, switches to `main` (fast-forward only), creates the branch from `origin/main`, applies and
+   stages only the manifest-listed files, checks that the change set is exactly the manifest, commits with `commit.txt`,
+   pushes the branch and opens the pull request to `main` with `pr-title.txt` and `pr.txt`. It never force-pushes or merges.
+   A failure before the commit removes the new branch again.
+
+### Update mode: fixing review comments on an open pull request
+
+When a pull request needs changes (for example after review comments), the delivery does not create a second branch or PR.
+Its `delivery-manifest.json` has `"mode": "update"`; `branch` is the existing PR branch and `baseCommit` is the exact commit
+at the tip of that branch that the delivery was built on. The folder needs only `delivery-manifest.json`, `commit.txt` and
+the changed files (no `pr.txt` or `pr-title.txt`). Run the same script the same way. It stops, without changing anything, when:
+
+- the remote branch does not exist, or the local copy of the branch is ahead of or diverged from `origin`;
+- the branch tip is not `baseCommit` (the branch moved since the delivery was built: ask for a rebuilt delivery);
+- any of the checks above fails (clean tree, safe paths, change set equals the manifest).
+
+Otherwise it checks out the branch (creating it from `origin/<branch>` when it is not local yet), applies and stages only the
+manifest-listed files, commits with `commit.txt`, pushes the branch (never force) and prints the existing pull request address.
+A failure before the commit restores the working tree and keeps the branch.
+
+The clone path defaults to `C:\Users\Devan Shah\Repo\job-search-tracker`. When that path is not a clone the script asks once and
+saves the answer in `%LOCALAPPDATA%\job-search-tracker-delivery.json` (local only, never committed). The `JOBSEARCH_REPO`
+environment variable overrides it. If the script stops, do not copy files by hand: fix the cause and run it again.
