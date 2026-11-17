@@ -19,7 +19,7 @@ function Invoke-GhJson([string[]]$GhArguments) {
     }
     $joined = $output -join "`n"
     try {
-        return ($joined | ConvertFrom-Json -Depth 100)
+        return ($joined | ConvertFrom-Json)
     } catch {
         Stop-Review "GitHub CLI returned data that was not valid JSON."
     }
@@ -44,7 +44,7 @@ try {
     }
 
     try {
-        $review = Get-Content -LiteralPath $ReviewFile -Raw | ConvertFrom-Json -Depth 100
+        $review = Get-Content -LiteralPath $ReviewFile -Raw -Encoding UTF8 | ConvertFrom-Json
     } catch {
         Stop-Review "review.json is invalid JSON: $($_.Exception.Message)"
     }
@@ -66,8 +66,8 @@ try {
     }
 
     $event = ([string]$review.event).ToUpperInvariant()
-    if ($event -notin @('COMMENT', 'APPROVE', 'REQUEST_CHANGES')) {
-        Stop-Review "Unsupported event '$event'. Use COMMENT, APPROVE, or REQUEST_CHANGES."
+    if ($event -ne 'COMMENT') {
+        Stop-Review "AC6 review packages must use the COMMENT event only."
     }
     if ($review.comments -isnot [System.Array]) {
         Stop-Review "comments must be a JSON array (use [] when there are no inline comments)."
@@ -92,7 +92,7 @@ try {
         Stop-Review ("Could not fetch the PR file list: " + ($filesRaw -join "`n"))
     }
     try {
-        $pages = (($filesRaw -join "`n") | ConvertFrom-Json -Depth 100)
+        $pages = (($filesRaw -join "`n") | ConvertFrom-Json)
     } catch {
         Stop-Review "Could not parse the PR file list returned by GitHub."
     }
@@ -119,9 +119,9 @@ try {
                 $newLine = [int]$Matches[3]
                 continue
             }
-            if ($patchLine.StartsWith('+++') -or $patchLine.StartsWith('---') -or $patchLine.StartsWith('\')) {
-                continue
-            }
+            # GitHub's per-file patch contains hunk bodies, not the file-level +++/--- headers.
+            # Therefore a content line beginning with ++ or -- must still be counted.
+            if ($patchLine.StartsWith('\')) { continue }
             if ($patchLine.StartsWith('+')) {
                 Add-PatchLine $right $newLine
                 $newLine++
@@ -198,7 +198,7 @@ try {
     Write-Host ""
     Write-Host "GitHub PR review preflight" -ForegroundColor Cyan
     Write-Host "Repository : $repo"
-    Write-Host "PR         : #$prNumber — $($pr.title)"
+    Write-Host "PR         : #$prNumber - $($pr.title)"
     Write-Host "Head SHA   : $($pr.head.sha)"
     Write-Host "Event      : $event"
     Write-Host "Inline     : $($validatedComments.Count) comment(s)"
@@ -213,24 +213,32 @@ try {
 
     Write-Host ""
     Write-Host "This will submit ONE GitHub review. It will not edit files, push commits, merge, or change repository settings." -ForegroundColor Cyan
-    if ($event -ne 'COMMENT') {
-        Write-Host "WARNING: $event is a formal review action." -ForegroundColor Red
-    }
     $confirmation = Read-Host "Type SUBMIT to continue"
     if ($confirmation -cne 'SUBMIT') {
         Write-Host "Cancelled. No review was submitted." -ForegroundColor Yellow
         exit 0
     }
 
+    # Re-fetch after the interactive pause so a newly pushed commit cannot receive this stale review.
+    $prAfterConfirmation = Invoke-GhJson @('api', "repos/$repo/pulls/$prNumber")
+    if ([string]$prAfterConfirmation.state -ne 'open') {
+        Stop-Review "PR #$prNumber is no longer open. No review was submitted."
+    }
+    if ([string]$prAfterConfirmation.head.sha -ne [string]$review.commit_id) {
+        Stop-Review "The PR head changed while awaiting confirmation. Payload SHA: $($review.commit_id); current PR head: $($prAfterConfirmation.head.sha). No review was submitted. Regenerate the review."
+    }
+
     $payload = @{
         commit_id = [string]$review.commit_id
-        event = $event
+        event = 'COMMENT'
         body = [string]$review.body
         comments = $validatedComments
     }
     $tempFile = Join-Path ([System.IO.Path]::GetTempPath()) ("gh-pr-review-" + [guid]::NewGuid().ToString('N') + ".json")
     try {
-        $payload | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $tempFile -Encoding utf8
+        $jsonBody = $payload | ConvertTo-Json -Depth 100
+        $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+        [System.IO.File]::WriteAllText($tempFile, $jsonBody, $utf8NoBom)
         $result = Invoke-GhJson @('api', "repos/$repo/pulls/$prNumber/reviews", '--method', 'POST', '--input', $tempFile)
     } finally {
         if (Test-Path -LiteralPath $tempFile) {
