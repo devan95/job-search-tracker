@@ -62,27 +62,10 @@ public static class EmployerEndpoints
             return errors.ToResult();
         }
 
-        var existing = await db.Employers.AsNoTracking().SingleOrDefaultAsync(e => e.NormalizedName == normalized, ct);
-        if (existing is not null)
-        {
-            return Results.Ok(EmployerResponse.From(existing));
-        }
-
-        var employer = new Employer(display);
-        db.Employers.Add(employer);
-        try
-        {
-            await db.SaveChangesAsync(ct);
-        }
-        catch (DbUpdateException ex) when (DbErrors.IsUniqueViolation(ex))
-        {
-            // Lost a race with a concurrent create of the same canonical name: return the winner.
-            db.ChangeTracker.Clear();
-            var winner = await db.Employers.AsNoTracking().SingleAsync(e => e.NormalizedName == normalized, ct);
-            return Results.Ok(EmployerResponse.From(winner));
-        }
-
-        return Results.Created($"/api/employers/{employer.Id}", EmployerResponse.From(employer));
+        var (employer, created) = await EmployerResolver.FindOrCreateAsync(db, display, normalized, ct);
+        return created
+            ? Results.Created($"/api/employers/{employer.Id}", EmployerResponse.From(employer))
+            : Results.Ok(EmployerResponse.From(employer));
     }
 
     /// <summary>Employers whose normalized name contains <c>q</c> (normalized the same way), ordered by name.</summary>

@@ -20,6 +20,7 @@ public static class CompanyListEndpoints
         group.MapDelete("/{id:guid}", DeleteAsync);
         group.MapPut("/{id:guid}/employers/{employerId:guid}", AddEmployerAsync);
         group.MapDelete("/{id:guid}/employers/{employerId:guid}", RemoveEmployerAsync);
+        group.MapCompanyListImportEndpoints();
 
         return api;
     }
