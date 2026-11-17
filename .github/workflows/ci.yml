@@ -129,7 +129,7 @@ jobs:
 
       - name: Authenticate to SonarQube Cloud (secretless)
         id: sonar-auth
-        uses: SonarSource/sonarqube-auth-action@v1
+        uses: SonarSource/sonarqube-auth-action@a0aa643acde4162396015b4f12536c1b9c4aab82
         with:
           export-env: false
 
