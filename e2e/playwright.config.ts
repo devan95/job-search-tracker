@@ -4,6 +4,7 @@ import { defineConfig, devices } from '@playwright/test'
 // (see docs/development.md, "End-to-end tests") and the Vite dev server for the web app,
 // which this config starts itself. Nothing here uses real data or credentials.
 const webUrl = process.env.E2E_WEB_URL ?? 'http://127.0.0.1:5173'
+const apiUrl = process.env.E2E_API_URL ?? 'http://127.0.0.1:5080'
 
 export default defineConfig({
   testDir: './tests',
@@ -24,6 +25,8 @@ export default defineConfig({
   webServer: {
     command: 'npm run dev',
     cwd: '../web',
+    // Point the dev-server proxy at the same API the tests call directly.
+    env: { API_PROXY_TARGET: apiUrl },
     url: webUrl,
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,

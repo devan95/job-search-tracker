@@ -70,9 +70,6 @@ jobs:
     name: E2E (Playwright smoke)
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      # Throw-away CI database inside the Compose stack; not a secret.
-      POSTGRES_PASSWORD: ci_only_not_a_secret
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -82,6 +79,11 @@ jobs:
           cache-dependency-path: |
             web/package-lock.json
             e2e/package-lock.json
+      - name: Generate a throw-away database password
+        run: |
+          pw="$(openssl rand -hex 16)"
+          echo "::add-mask::$pw"
+          echo "POSTGRES_PASSWORD=$pw" >> "$GITHUB_ENV"
       - name: Start database, apply migrations, start API
         run: |
           docker compose up -d --wait db
@@ -151,10 +153,26 @@ jobs:
     # Fork PRs do not receive GitHub OIDC permission.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     permissions:
       contents: read
       id-token: write
+    # The coverage run below executes the database tests, so it needs the same throw-away PostgreSQL service as the backend job.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_only_not_a_secret
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      JOBSEARCH_TEST_ADMIN_CONNECTION: Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=ci_only_not_a_secret
     steps:
       - uses: actions/checkout@v7
         with:
@@ -194,11 +212,29 @@ jobs:
           "$RUNNER_TEMP/sonar-scanner/dotnet-sonarscanner" begin \
             /k:"${{ steps.sonar-auth.outputs.project-key }}" \
             /o:"${{ steps.sonar-auth.outputs.organization }}" \
+            /d:sonar.coverage.exclusions="e2e/**" \
             /d:sonar.token="$SONAR_TOKEN" \
-            /d:sonar.scanner.scanAll=true
+            /d:sonar.scanner.scanAll=true \
+            /d:sonar.cs.opencover.reportsPaths="$GITHUB_WORKSPACE/coverage/dotnet/**/coverage.opencover.xml" \
+            /d:sonar.javascript.lcov.reportPaths=web/coverage/lcov.info
 
       - name: Build solution for SonarQube analysis
         run: dotnet build JobSearchTracker.slnx --no-restore -c Release
+
+      - name: Backend tests with coverage (OpenCover)
+        run: >
+          dotnet test JobSearchTracker.slnx --no-build -c Release
+          --collect:"XPlat Code Coverage"
+          --results-directory "$GITHUB_WORKSPACE/coverage/dotnet"
+          -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover
+
+      - name: Frontend tests with coverage (LCOV)
+        working-directory: web
+        run: npm run test:coverage
+
+      - name: Make LCOV paths relative to the repository root
+        # Vitest writes SF: paths relative to web/; SonarQube resolves them from the repository root.
+        run: sed -i -E 's#^SF:([^/])#SF:web/\1#' web/coverage/lcov.info
 
       - name: End SonarQube analysis
         env:
