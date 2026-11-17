@@ -118,6 +118,158 @@ namespace JobSearchTracker.Api.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("JobSearchTracker.Api.Data.Job", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ApplyUrl")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("CanonicalUrl")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedVia")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Department")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("EmployerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EmploymentType")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<int?>("ExperienceMaxYears")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("ExperienceMinYears")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("FoundOn")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Location")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("NormalizedLocation")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("NormalizedRequisitionId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("NormalizedTitle")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateOnly?>("PostedDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("RequisitionId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("WorkMode")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CanonicalUrl");
+
+                    b.HasIndex("EmployerId", "NormalizedRequisitionId")
+                        .IsUnique()
+                        .HasFilter("\"NormalizedRequisitionId\" IS NOT NULL");
+
+                    b.HasIndex("EmployerId", "NormalizedTitle");
+
+                    b.ToTable("jobs", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_jobs_employment_type_values", "\"EmploymentType\" IS NULL OR \"EmploymentType\" IN ('fullTime', 'partTime', 'contract', 'internship', 'temporary', 'other')");
+
+                            t.HasCheckConstraint("CK_jobs_experience_min_not_above_max", "\"ExperienceMinYears\" IS NULL OR \"ExperienceMaxYears\" IS NULL OR \"ExperienceMinYears\" <= \"ExperienceMaxYears\"");
+
+                            t.HasCheckConstraint("CK_jobs_experience_years_not_negative", "(\"ExperienceMinYears\" IS NULL OR \"ExperienceMinYears\" >= 0) AND (\"ExperienceMaxYears\" IS NULL OR \"ExperienceMaxYears\" >= 0)");
+
+                            t.HasCheckConstraint("CK_jobs_status_values", "\"Status\" IN ('new', 'open', 'closed', 'expired', 'reopened', 'unavailable', 'verificationPending')");
+
+                            t.HasCheckConstraint("CK_jobs_title_not_blank", "char_length(btrim(\"Title\")) > 0");
+
+                            t.HasCheckConstraint("CK_jobs_work_mode_values", "\"WorkMode\" IS NULL OR \"WorkMode\" IN ('remote', 'onSite', 'hybrid')");
+                        });
+                });
+
+            modelBuilder.Entity("JobSearchTracker.Api.Data.JobStatusHistory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("ChangedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FromStatus")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ToStatus")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("JobId", "ChangedAtUtc");
+
+                    b.ToTable("job_status_history", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_job_status_history_from_status_values", "\"FromStatus\" IS NULL OR \"FromStatus\" IN ('new', 'open', 'closed', 'expired', 'reopened', 'unavailable', 'verificationPending')");
+
+                            t.HasCheckConstraint("CK_job_status_history_to_status_values", "\"ToStatus\" IN ('new', 'open', 'closed', 'expired', 'reopened', 'unavailable', 'verificationPending')");
+                        });
+                });
+
             modelBuilder.Entity("JobSearchTracker.Api.Data.SearchProfile", b =>
                 {
                     b.Property<Guid>("Id")
@@ -198,6 +350,28 @@ namespace JobSearchTracker.Api.Data.Migrations
                     b.Navigation("Employer");
                 });
 
+            modelBuilder.Entity("JobSearchTracker.Api.Data.Job", b =>
+                {
+                    b.HasOne("JobSearchTracker.Api.Data.Employer", "Employer")
+                        .WithMany()
+                        .HasForeignKey("EmployerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Employer");
+                });
+
+            modelBuilder.Entity("JobSearchTracker.Api.Data.JobStatusHistory", b =>
+                {
+                    b.HasOne("JobSearchTracker.Api.Data.Job", "Job")
+                        .WithMany("StatusHistory")
+                        .HasForeignKey("JobId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Job");
+                });
+
             modelBuilder.Entity("JobSearchTracker.Api.Data.SearchProfile", b =>
                 {
                     b.HasOne("JobSearchTracker.Api.Data.Candidate", "Candidate")
@@ -243,6 +417,11 @@ namespace JobSearchTracker.Api.Data.Migrations
             modelBuilder.Entity("JobSearchTracker.Api.Data.Employer", b =>
                 {
                     b.Navigation("CompanyLists");
+                });
+
+            modelBuilder.Entity("JobSearchTracker.Api.Data.Job", b =>
+                {
+                    b.Navigation("StatusHistory");
                 });
 
             modelBuilder.Entity("JobSearchTracker.Api.Data.SearchProfile", b =>

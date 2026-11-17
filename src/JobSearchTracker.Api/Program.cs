@@ -42,6 +42,7 @@ api.MapCandidateEndpoints();
 api.MapEmployerEndpoints();
 api.MapCompanyListEndpoints();
 api.MapSearchProfileEndpoints();
+api.MapJobEndpoints();
 
 app.Run();
 

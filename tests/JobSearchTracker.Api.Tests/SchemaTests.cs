@@ -6,25 +6,26 @@ public class SchemaTests : DatabaseTestBase
     private static readonly string[] ExpectedTables =
     [
         "candidates", "company_list_employers", "company_lists", "employers",
-        "search_profile_company_lists", "search_profiles",
+        "job_status_history", "jobs", "search_profile_company_lists", "search_profiles",
     ];
 
     [Fact]
-    public async Task Exactly_six_application_tables_exist_excluding_the_migration_history()
+    public async Task Exactly_eight_application_tables_exist_excluding_the_migration_history()
     {
         var tables = await Db.QueryAsync(
             "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' " +
             "AND table_name <> '__EFMigrationsHistory' ORDER BY table_name",
             r => r.GetString(0));
 
-        Assert.Equal(ExpectedTables, tables);
+        // Compared in ordinal order: PostgreSQL's ORDER BY follows the database collation, which may ignore underscores.
+        Assert.Equal(ExpectedTables.OrderBy(x => x, StringComparer.Ordinal), tables.OrderBy(x => x, StringComparer.Ordinal));
     }
 
     [Fact]
-    public async Task Migration_history_table_records_exactly_the_initial_migration()
+    public async Task Migration_history_table_records_exactly_the_two_migrations()
     {
         var applied = await Db.QueryAsync("SELECT \"MigrationId\" FROM \"__EFMigrationsHistory\"", r => r.GetString(0));
-        Assert.Equal(new[] {"20261114120000_InitialDataModel"}, applied);
+        Assert.Equal(new[] {"20261114120000_InitialDataModel", "20261117060000_AddJobs"}, applied.OrderBy(x => x, StringComparer.Ordinal));
     }
 
     [Fact]
@@ -50,6 +51,33 @@ public class SchemaTests : DatabaseTestBase
             "employers.Id uuid NO -",
             "employers.Name character varying NO 200",
             "employers.NormalizedName character varying NO 200",
+            "job_status_history.ChangedAtUtc timestamp with time zone NO -",
+            "job_status_history.FromStatus character varying YES 30",
+            "job_status_history.Id uuid NO -",
+            "job_status_history.JobId uuid NO -",
+            "job_status_history.ToStatus character varying NO 30",
+            "jobs.ApplyUrl character varying YES 2000",
+            "jobs.CanonicalUrl character varying YES 2000",
+            "jobs.CreatedAtUtc timestamp with time zone NO -",
+            "jobs.CreatedVia character varying NO 20",
+            "jobs.Department character varying YES 200",
+            "jobs.Description text YES -",
+            "jobs.EmployerId uuid NO -",
+            "jobs.EmploymentType character varying YES 20",
+            "jobs.ExperienceMaxYears integer YES -",
+            "jobs.ExperienceMinYears integer YES -",
+            "jobs.FoundOn character varying YES 200",
+            "jobs.Id uuid NO -",
+            "jobs.Location character varying YES 200",
+            "jobs.NormalizedLocation character varying YES 200",
+            "jobs.NormalizedRequisitionId character varying YES 200",
+            "jobs.NormalizedTitle character varying NO 200",
+            "jobs.PostedDate date YES -",
+            "jobs.RequisitionId character varying YES 100",
+            "jobs.Status character varying NO 30",
+            "jobs.Title character varying NO 200",
+            "jobs.UpdatedAtUtc timestamp with time zone NO -",
+            "jobs.WorkMode character varying YES 10",
             "search_profile_company_lists.CompanyListId uuid NO -",
             "search_profile_company_lists.SearchProfileId uuid NO -",
             "search_profiles.BroadSearchEnabled boolean NO -",
@@ -73,8 +101,10 @@ public class SchemaTests : DatabaseTestBase
             "AND indexname NOT LIKE 'PK\\_%' ORDER BY indexname",
             r => r.GetString(0));
 
-        Assert.Equal(new[] {"IX_company_lists_NormalizedName", "IX_employers_NormalizedName", "IX_search_profiles_CandidateId_NormalizedName"},
-            unique);
+        Assert.Equal(
+            new[] {"IX_company_lists_NormalizedName", "IX_employers_NormalizedName", "IX_jobs_EmployerId_NormalizedRequisitionId", "IX_search_profiles_CandidateId_NormalizedName"}
+                .OrderBy(x => x, StringComparer.Ordinal),
+            unique.OrderBy(x => x, StringComparer.Ordinal));
     }
 
     [Fact]
@@ -89,6 +119,8 @@ public class SchemaTests : DatabaseTestBase
         Assert.Equal(new[] {
                 "company_list_employers -> company_lists CASCADE",
                 "company_list_employers -> employers RESTRICT",
+                "job_status_history -> jobs CASCADE",
+                "jobs -> employers RESTRICT",
                 "search_profile_company_lists -> company_lists RESTRICT",
                 "search_profile_company_lists -> search_profiles CASCADE",
                 "search_profiles -> candidates RESTRICT",
@@ -108,10 +140,18 @@ public class SchemaTests : DatabaseTestBase
                 "CK_company_lists_default_work_modes_range",
                 "CK_company_lists_name_not_blank",
                 "CK_employers_name_not_blank",
+                "CK_job_status_history_from_status_values",
+                "CK_job_status_history_to_status_values",
+                "CK_jobs_employment_type_values",
+                "CK_jobs_experience_min_not_above_max",
+                "CK_jobs_experience_years_not_negative",
+                "CK_jobs_status_values",
+                "CK_jobs_title_not_blank",
+                "CK_jobs_work_mode_values",
                 "CK_search_profiles_name_not_blank",
                 "CK_search_profiles_profile_version_min",
                 "CK_search_profiles_work_modes_range",
-            },
+            }.OrderBy(x => x, StringComparer.Ordinal),
             checks.OrderBy(x => x, StringComparer.Ordinal));
     }
 

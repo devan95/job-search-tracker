@@ -35,6 +35,12 @@ List endpoints take `skip` (default 0) and `take` (default 100, at most 500) and
 | `candidate_has_profiles` | 409 | Delete of a candidate that still has search profiles (`searchProfileCount`) |
 | `company_list_in_use` | 409 | Delete of a list that a search profile still selects (`searchProfileCount`) |
 | `employer_in_company_list` | 409 | Delete of an employer that is still in a list (`companyListCount`) |
+| `employer_has_jobs` | 409 | Delete of an employer that still has jobs (`jobCount`) |
+| `duplicate_requisition` | 409 | Same employer and requisition id as an existing job (`existingId`, `matchedOn`). Cannot be overridden |
+| `possible_duplicate` | 409 | Same canonical URL, or same employer + title + location (`existingId`, `matchedOn`). Resend with `confirmDifferentJob: true` if it is a different job |
+| `invalid_status_transition` | 409 | The job's current status does not allow the requested status (`currentStatus`, `requestedStatus`) |
+| `job_in_use` | 409 | Delete of a job that an application or source listing references (none exist yet) |
+| `concurrent_modification` | 409 | The job was changed or deleted by someone else while the request ran. Reload and retry |
 
 Work modes are arrays of `remote`, `onSite`, `hybrid` (case-insensitive on input; repeated values count once).
 
@@ -91,6 +97,57 @@ There is no employer rename or update in Phase 1.
 the defaults of every selected list. `profileVersion` starts at 1 and is returned as stored; nothing increments it in Phase 1.
 There is no source catalog or per-source enablement.
 
+### Jobs
+
+Jobs are global and entered manually in Phase 1 (no source, Gmail or AI). The employer is a typed name resolved like
+`POST /employers/resolve`: an existing employer is reused, otherwise one is created in the same save as the job, so a rejected
+job never leaves an employer behind.
+
+| Method and path | Body | Notes |
+| --- | --- | --- |
+| `POST /jobs` | job body (below) | 201 with the full job; status starts `open` with one history row. 409 on a duplicate |
+| `GET /jobs?q=&employerId=&status=&workMode=&employmentType=&skip=&take=` | | Summaries, newest first. `q` is a normalized substring of the title or employer name. Filters are case-insensitive on input; unknown values are 400 |
+| `GET /jobs/{id}` | | Full job including `statusHistory` (oldest first) |
+| `PUT /jobs/{id}` | job body | Replaces every field: an omitted optional field is cleared. Never changes status, `createdVia` or `createdAtUtc` |
+| `POST /jobs/{id}/status` | `{ "status" }` | Timestamped transition, see below. Returns the full job |
+| `DELETE /jobs/{id}` | | 204. 409 `job_in_use` when an application or source listing references it |
+
+Job body: `employer` and `title` are required; optional: `applyUrl`, `location`, `workMode` (`remote`, `onSite`, `hybrid`),
+`employmentType` (`fullTime`, `partTime`, `contract`, `internship`, `temporary`, `other`), `department`, `experienceMinYears`,
+`experienceMaxYears` (whole numbers 0 to 60, min <= max), `requisitionId`, `postedDate` (`yyyy-MM-dd`), `description` (plain
+text), `foundOn`, and `confirmDifferentJob`. Blank optional text is stored as unset. Limits: title and location 200 characters
+(after normalization), department and found on 200, requisition id 100, URL 2000, description 50 000. A `status` in the body is
+ignored. Responses add `id`, `createdVia` (`manual`), `createdAtUtc`, `updatedAtUtc`, `status`, `canonicalUrl` and the employer
+as `{ id, name }`.
+
+**Status.** A user may request `closed`, `expired`, `unavailable` or `reopened` ("open again"). `reopened` is allowed only from
+`closed`, `expired` or `unavailable`; the other three are allowed from `open`, `reopened` or one of the other two, but not to the
+same status. Anything else is 409 `invalid_status_transition`. `new` and `verificationPending` are system-only (400 when requested,
+and a job in either cannot be changed by the user). A job status never changes an application's status.
+
+**Duplicates (warn and confirm).** Checked on create, and on update only for what the update changes. Changing or clearing the
+requisition id also re-checks the URL and the title + location rules, because it changes which jobs they can match.
+
+1. Same employer + same requisition id (normalized): 409 `duplicate_requisition`, never overridable.
+2. Different requisition ids never match, whatever the title, location or URL are.
+3. Same canonical URL, or same employer + normalized title + normalized location: 409 `possible_duplicate` with `existingId` and
+   `matchedOn` (`canonicalUrl` or `employerTitleLocation`). Resend with `"confirmDifferentJob": true` to create or save it anyway.
+
+**URL canonicalization** (reused by Phase 2 S2.8). Only absolute http or https URLs without a user name or password are accepted.
+The canonical form lower-cases the host (punycode for international names), drops a leading `www.`, the fragment, a default port
+and a trailing slash, keeps the path case and the scheme, removes tracking parameters and sorts the remaining parameters.
+Tracking parameters (names are case-insensitive): `utm_*`, `fbclid`, `gclid`, `dclid`, `msclkid`, `twclid`, `yclid`, `mc_cid`,
+`mc_eid`, `_hsenc`, `_hsmi`, `trk`, `trackingId`, `refId`, `gh_src`, `lever-source`, `lever-origin`. Job-identifying parameters such as
+`gh_jid` and `currentJobId` are kept. `ApplyUrl` is stored as typed; `canonicalUrl` is returned for reference.
+
+**Delete.** A job with no application and no source listing is hard-deleted with its status history; the employer stays. Closed
+or expired is the archive for jobs that have an application. `DELETE /employers/{id}` also returns 409 `employer_has_jobs`
+(`jobCount`) while the employer has jobs.
+
+**Concurrency.** Status changes, updates and deletes are version-checked (PostgreSQL `xmin`): of two concurrent changes to the
+same job only one is saved and the other gets 409 `concurrent_modification`. `GET` and the response of a change read the job
+and its status history from one snapshot.
+
 ## Examples
 
 ```
@@ -115,6 +172,15 @@ POST /api/search-profiles
 -> 201 { "id": "c3f4...", "candidateId": "6f0c...", "name": "Backend roles", "workModes": null,
          "companyMonitoringEnabled": true, "broadSearchEnabled": false, "profileVersion": 1,
          "companyLists": [ { "id": "2a9e...", "name": "Ahmedabad product companies", "defaultWorkModes": ["onSite", "hybrid"] } ] }
+
+POST /api/jobs
+{ "employer": "ACME Corp", "title": "Backend Engineer", "applyUrl": "https://acme.com/jobs/7?utm_source=mail", "location": "Pune; Remote India", "workMode": "hybrid" }
+-> 201 { "id": "d4a1...", "employer": { "id": "b1d2...", "name": "ACME   Corp" }, "title": "Backend Engineer",
+         "canonicalUrl": "https://acme.com/jobs/7", "status": "open", "createdVia": "manual",
+         "statusHistory": [ { "fromStatus": null, "toStatus": "open", "changedAtUtc": "..." } ], ... }
+
+POST /api/jobs   (same employer, title and location again)
+-> 409 { "code": "possible_duplicate", "existingId": "d4a1...", "matchedOn": "employerTitleLocation", ... }
 
 DELETE /api/company-lists/2a9e...
 -> 409 { "title": "Company list is used by a search profile", "status": 409,

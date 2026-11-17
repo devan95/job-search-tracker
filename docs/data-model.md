@@ -59,6 +59,54 @@ rule later requires a data migration that recomputes `NormalizedName`.
 The rows above for `company_lists`/`search_profile_company_lists` and the CASCADE/RESTRICT split were applied from the
 approved "proposed cascade/restrict relationships" (U8); see "Assumptions to confirm".
 
+## Jobs (Order 6; decisions OQ-P1.4 to OQ-P1.7, answered 2026-11-15)
+
+Order 6 (migration `20261117060000_AddJobs`) adds two tables, so the model has eight tables in total; the heading above and the
+first table describe the original six.
+
+| Table | Purpose | Key columns |
+| --- | --- | --- |
+| `jobs` | Canonical job record. Global, not per candidate. Manual in Phase 1; Phase 2 source listings will point at it. | `Id`, `EmployerId`, `Title`, `NormalizedTitle`, `CanonicalUrl`, `NormalizedLocation`, `NormalizedRequisitionId`, `Status`, `CreatedVia` |
+| `job_status_history` | One timestamped row per job status transition (the first row has no `FromStatus`). | `Id`, `JobId`, `FromStatus`, `ToStatus`, `ChangedAtUtc` |
+
+Delete rules:
+
+| Relationship | On delete | Meaning |
+| --- | --- | --- |
+| `employers` -> `jobs` | RESTRICT | An employer that has jobs cannot be deleted. |
+| `jobs` -> `job_status_history` | CASCADE | Deleting a job removes its history only. |
+
+Tables that will reference a job later (applications, source listings) must use RESTRICT, so a job that has either cannot
+be hard-deleted (OQ-P1.6); the API maps that foreign-key failure to `409 job_in_use`.
+
+Concurrency: `jobs` uses PostgreSQL's `xmin` system column as an optimistic concurrency token (no column or migration DDL; it is
+only in the EF model), so two concurrent changes to one job cannot both be saved.
+
+Field names follow Phase 2 S2.1 D1, which Phase 2 extends (source listings, content hash, updated times) without renaming.
+
+| Column | Type | Rule |
+| --- | --- | --- |
+| `EmployerId` | uuid | Required; FK to `employers`, RESTRICT. Resolved by typed name (find-or-create) |
+| `Title` / `NormalizedTitle` | varchar(200) | Required, not blank (check). Normalized with the name normalizer |
+| `ApplyUrl` / `CanonicalUrl` | varchar(2000), nullable | http or https only. `CanonicalUrl` is the duplicate key, see api.md (Jobs) |
+| `Location` / `NormalizedLocation` | varchar(200), nullable | One free-text field; several places separated by semicolons |
+| `WorkMode` | varchar(10), nullable | `remote`, `onSite`, `hybrid` (check); one value, not a mask |
+| `EmploymentType` | varchar(20), nullable | `fullTime`, `partTime`, `contract`, `internship`, `temporary`, `other` (check) |
+| `Department`, `RequisitionId` / `NormalizedRequisitionId`, `FoundOn` | varchar, nullable | `FoundOn` is for manual jobs |
+| `ExperienceMinYears`, `ExperienceMaxYears` | integer, nullable | Whole numbers, >= 0, min <= max (checks); the API limits them to 60 |
+| `PostedDate` | date, nullable | |
+| `Description` | text, nullable | Plain text; the API limits it to 50 000 characters |
+| `CreatedVia` | varchar(20) | `manual` for every Phase 1 job; Phase 2 adds source-created values |
+| `Status` | varchar(30) | `new`, `open`, `closed`, `expired`, `reopened`, `unavailable`, `verificationPending` (check). A new manual job is `open`. `new` and `verificationPending` are system-only and already allowed so Phase 2 needs no check change |
+| `CreatedAtUtc`, `UpdatedAtUtc` | timestamptz | Set by the system |
+
+No salary, notes, contacts or application deadline (OQ-P1.4). Job status never changes an application's status (OQ-P1.5).
+
+Indexes: unique (`EmployerId`, `NormalizedRequisitionId`) where the requisition is not null (same employer + same requisition
+id is one job, no override); (`EmployerId`, `NormalizedTitle`); (`CanonicalUrl`). Different requisition ids are different jobs, and a
+job without a requisition id is not constrained. The URL and title + location rules are application-level warnings (OQ-P1.7),
+not unique indexes, because the user may confirm them.
+
 ## Deferred requirements (AC7)
 
 Not in this model: location sets, role lists and aliases, employer website/career URL/ATS, source catalog and per-source enablement, automatic `ProfileVersion` increment. Their owner and phase are on the Notion Task Board and Product Requirements; the API is in [api.md](api.md).
