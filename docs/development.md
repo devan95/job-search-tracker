@@ -157,10 +157,10 @@ database report healthy); workflow tests are separate tasks.
 docker compose up -d --wait db
 docker compose run --rm migrate
 docker compose up -d api
-cd web && npm ci && cd ..
+cd web && npm ci --ignore-scripts && cd ..
 cd e2e
-npm ci
-npx playwright install chromium
+npm ci --ignore-scripts
+npm run install-browsers
 npm test
 ```
 
