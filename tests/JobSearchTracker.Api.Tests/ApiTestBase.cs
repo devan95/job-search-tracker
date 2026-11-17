@@ -21,6 +21,9 @@ public abstract class ApiTestBase : IAsyncLifetime
 
     protected HttpClient Client { get; private set; } = null!;
 
+    /// <summary>Connection string of this test's own database (for tests that need a second, direct connection).</summary>
+    protected string ConnectionString => _db.ConnectionString;
+
     public async Task InitializeAsync()
     {
         _db = await TestDatabase.CreateMigratedAsync();

@@ -144,6 +144,7 @@ public static class CompanyListImportEndpoints
         var known = await LoadKnownAsync(db, listId, candidates, ct);
 
         int created = 0, reused = 0;
+        var toAdd = new List<Guid>();
         var skipped = parsed.Rows.Count(r => r.Kind == ParsedRowKind.DuplicateInInput);
         foreach (var row in candidates)
         {
@@ -173,6 +174,12 @@ public static class CompanyListImportEndpoints
                 }
             }
 
+            toAdd.Add(employerId);
+        }
+
+        // Memberships are added only now, so that the employer inserts above never flush (and never fail on) a membership.
+        foreach (var employerId in toAdd)
+        {
             db.CompanyListEmployers.Add(new CompanyListEmployer { CompanyListId = listId, EmployerId = employerId });
         }
 
