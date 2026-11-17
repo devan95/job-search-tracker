@@ -231,21 +231,14 @@ try {
         Write-Host ([string]$c.body)
     }
 
-    Write-Host ""
-    Write-Host "This will submit ONE GitHub review. It will not edit files, push commits, merge, or change repository settings." -ForegroundColor Cyan
-    $confirmation = Read-Host "Type SUBMIT to continue"
-    if ($confirmation -cne 'SUBMIT') {
-        Write-Host "Cancelled. No review was submitted." -ForegroundColor Yellow
-        exit 0
-    }
-
-    # Re-fetch after the interactive pause so a newly pushed commit cannot receive this stale review.
-    $prAfterConfirmation = Invoke-GhJson @('api', "repos/$repo/pulls/$prNumber")
-    if ([string]$prAfterConfirmation.state -ne 'open') {
+    # Re-fetch immediately before submission so a newly pushed commit or closed PR
+    # cannot receive this review. No interactive confirmation or pause is required.
+    $prBeforeSubmission = Invoke-GhJson @('api', "repos/$repo/pulls/$prNumber")
+    if ([string]$prBeforeSubmission.state -ne 'open') {
         Stop-Review "PR #$prNumber is no longer open. No review was submitted."
     }
-    if ([string]$prAfterConfirmation.head.sha -ne [string]$review.commit_id) {
-        Stop-Review "The PR head changed while awaiting confirmation. Payload SHA: $($review.commit_id); current PR head: $($prAfterConfirmation.head.sha). No review was submitted. Regenerate the review."
+    if ([string]$prBeforeSubmission.head.sha -ne [string]$review.commit_id) {
+        Stop-Review "The PR head changed before submission. Payload SHA: $($review.commit_id); current PR head: $($prBeforeSubmission.head.sha). No review was submitted. Regenerate the review."
     }
 
     $payload = @{

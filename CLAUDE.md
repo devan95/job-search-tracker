@@ -56,7 +56,6 @@ For any PR review, first read and follow [`.claude/skills/github-pr-review/SKILL
   - `submit-review.ps1`
 - The JSON must identify the repository, PR number, exact current 40-character PR head SHA, event, summary body and inline comments. Never invent paths or line references; each inline comment must be valid against the current PR diff.
 - Use `COMMENT` by default. For AC6 (the independent reviewer), `COMMENT` is the only permitted event. Never use `APPROVE` or `REQUEST_CHANGES` for AC6.
-- The user extracts the ZIP and double-clicks `submit-review.cmd`. The runner must verify GitHub CLI (`gh`) is installed and authenticated, confirm the PR is open, and confirm the current PR head SHA exactly matches `review.json`. If the PR changed, stop and regenerate the review.
-- The runner displays the complete review and requires the user to type `SUBMIT`. Nothing is posted before that confirmation. It submits one GitHub review containing the summary and inline comments.
+- The user extracts the ZIP and double-clicks `submit-review.cmd`. The runner verifies GitHub CLI (`gh`) is installed and authenticated, validates the review payload and inline comment locations, confirms the PR is open and the head SHA matches, then rechecks PR state and SHA immediately before submission. After all preflight checks pass, it submits one GitHub review automatically; no `SUBMIT` confirmation is required.
 - Do not claim submission until the runner reports success and returns the GitHub review URL. Do not paste the full review into chat as a substitute for the ZIP.
-- The review ZIP is not a code-delivery ZIP: it must not create branches, modify source files, commit, push or create a PR. Never include tokens, credentials, real candidate data or unrelated files.
+- The review ZIP is a submission artifact only: it must not create branches, modify source files, commit, push or create a PR. Never include tokens, credentials, real candidate data or unrelated files.
