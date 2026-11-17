@@ -65,8 +65,8 @@ try {
         Stop-Review "commit_id must be a full 40-character commit SHA."
     }
 
-    $event = ([string]$review.event).ToUpperInvariant()
-    if ($event -ne 'COMMENT') {
+    $reviewEvent = ([string]$review.event).ToUpperInvariant()
+    if ($reviewEvent -ne 'COMMENT') {
         Stop-Review "AC6 review packages must use the COMMENT event only."
     }
     if ($review.comments -isnot [System.Array]) {
@@ -220,7 +220,7 @@ try {
     Write-Host "Repository : $repo"
     Write-Host "PR         : #$prNumber - $($pr.title)"
     Write-Host "Head SHA   : $($pr.head.sha)"
-    Write-Host "Event      : $event"
+    Write-Host "Event      : $reviewEvent"
     Write-Host "Inline     : $($validatedComments.Count) comment(s)"
     Write-Host ""
     Write-Host "Summary:"
