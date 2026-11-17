@@ -124,6 +124,17 @@ CI runs the same tests against a PostgreSQL 17 service and also runs
 After changing the model, add a migration: `dotnet ef migrations add <Name> --project src/JobSearchTracker.Api --startup-project src/JobSearchTracker.Api`
 (with `ConnectionStrings:Default` set). The data model is described in `data-model.md`.
 
+## Coverage reports (SonarQube Cloud)
+
+The `SonarQube Cloud analysis` CI job runs both test suites with coverage between `begin` and `end` of the analysis and imports
+the reports. No coverage threshold is enforced until a baseline has been measured.
+
+- Backend: `coverlet.collector` writes OpenCover XML to `coverage/dotnet/<run id>/coverage.opencover.xml`
+  (`sonar.cs.opencover.reportsPaths`). Locally: `dotnet test JobSearchTracker.slnx --collect:"XPlat Code Coverage" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover`.
+- Frontend: `npm run test:coverage` (from `web/`, Vitest with the V8 provider) writes `web/coverage/lcov.info`
+  (`sonar.javascript.lcov.reportPaths`). The job rewrites the `SF:` paths to start with `web/` before the analysis ends.
+- Both output folders (`coverage/` and `web/coverage/`) are git-ignored.
+
 ## Management API
 
 Candidates, employers, company lists and search profiles are managed through `/api/...`; see [api.md](api.md) for the
