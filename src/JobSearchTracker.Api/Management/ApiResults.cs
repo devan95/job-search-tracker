@@ -17,6 +17,11 @@ internal static class ApiResults
     public const string CompanyListInUseCode = "company_list_in_use";
     public const string EmployerInListCode = "employer_in_company_list";
     public const string NotAMemberCode = "not_a_member";
+    public const string EmployerHasJobsCode = "employer_has_jobs";
+    public const string DuplicateRequisitionCode = "duplicate_requisition";
+    public const string PossibleDuplicateCode = "possible_duplicate";
+    public const string InvalidStatusTransitionCode = "invalid_status_transition";
+    public const string JobInUseCode = "job_in_use";
 
     public static IResult NotFound(string what, Guid id) =>
         Problem(StatusCodes.Status404NotFound, NotFoundCode, $"{what} not found", $"No {what.ToLowerInvariant()} with id {id} exists.");
@@ -76,4 +81,8 @@ internal static class DbErrors
 
     public static bool IsForeignKeyViolation(DbUpdateException ex) =>
         ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.ForeignKeyViolation };
+
+    /// <summary>Name of the violated constraint or unique index, when PostgreSQL reports one.</summary>
+    public static string? ConstraintName(DbUpdateException ex) =>
+        (ex.InnerException as PostgresException)?.ConstraintName;
 }

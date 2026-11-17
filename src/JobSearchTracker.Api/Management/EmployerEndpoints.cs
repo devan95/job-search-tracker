@@ -153,6 +153,12 @@ public static class EmployerEndpoints
             return InUse(id, listCount);
         }
 
+        var jobCount = await db.Jobs.CountAsync(x => x.EmployerId == id, ct);
+        if (jobCount > 0)
+        {
+            return HasJobs(id, jobCount);
+        }
+
         db.Employers.Remove(employer);
         try
         {
@@ -160,7 +166,10 @@ public static class EmployerEndpoints
         }
         catch (DbUpdateException ex) when (DbErrors.IsForeignKeyViolation(ex))
         {
-            return InUse(id, null);
+            // A list or a job was added after the counts above; report whichever blocks the delete now.
+            db.ChangeTracker.Clear();
+            var jobsNow = await db.Jobs.CountAsync(x => x.EmployerId == id, ct);
+            return jobsNow > 0 ? HasJobs(id, jobsNow) : InUse(id, null);
         }
 
         return Results.NoContent();
@@ -172,6 +181,13 @@ public static class EmployerEndpoints
             "Employer name already exists",
             $"An employer named '{existing.Name}' already exists (names are compared after normalization).",
             new Dictionary<string, object?> { ["existingId"] = existing.Id });
+
+    private static IResult HasJobs(Guid id, int jobCount) =>
+        ApiResults.Conflict(
+            ApiResults.EmployerHasJobsCode,
+            "Employer has jobs",
+            $"Employer {id} still has jobs. Delete or reassign those jobs first.",
+            new Dictionary<string, object?> { ["jobCount"] = jobCount });
 
     private static IResult InUse(Guid id, int? listCount) =>
         ApiResults.Conflict(

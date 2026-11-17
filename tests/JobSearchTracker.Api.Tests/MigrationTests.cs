@@ -16,14 +16,28 @@ public class MigrationTests
         Assert.Empty(await TablesAsync(db));
 
         await db.MigrateToAsync(null);
-        Assert.Equal(6, (await TablesAsync(db)).Count);
+        Assert.Equal(8, (await TablesAsync(db)).Count);
 
         await db.MigrateToAsync("0");
         Assert.Empty(await TablesAsync(db));
         Assert.Empty(await db.QueryAsync("SELECT \"MigrationId\" FROM \"__EFMigrationsHistory\"", r => r.GetString(0)));
 
         await db.MigrateToAsync(null);
-        Assert.Equal(6, (await TablesAsync(db)).Count);
+        Assert.Equal(8, (await TablesAsync(db)).Count);
+    }
+
+    [Fact]
+    public async Task The_jobs_migration_reverts_alone_and_leaves_the_initial_six_tables()
+    {
+        await using var db = await TestDatabase.CreateEmptyAsync();
+        await db.MigrateToAsync(null);
+
+        await db.MigrateToAsync("20261114120000_InitialDataModel");
+
+        var tables = await TablesAsync(db);
+        Assert.Equal(6, tables.Count);
+        Assert.DoesNotContain("jobs", tables);
+        Assert.DoesNotContain("job_status_history", tables);
     }
 
     [Fact]

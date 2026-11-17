@@ -3,8 +3,8 @@ using Microsoft.EntityFrameworkCore;
 namespace JobSearchTracker.Api.Data;
 
 /// <summary>
-/// EF Core context for the Phase 1 data model: candidates, employers, company lists, search profiles and the
-/// two join tables. See docs/data-model.md for the decisions behind it.
+/// EF Core context for the Phase 1 data model: candidates, employers, company lists, search profiles, the
+/// two join tables, canonical jobs and their status history. See docs/data-model.md for the decisions behind it.
 /// </summary>
 public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
@@ -14,6 +14,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<CompanyListEmployer> CompanyListEmployers => Set<CompanyListEmployer>();
     public DbSet<SearchProfile> SearchProfiles => Set<SearchProfile>();
     public DbSet<SearchProfileCompanyList> SearchProfileCompanyLists => Set<SearchProfileCompanyList>();
+    public DbSet<Job> Jobs => Set<Job>();
+    public DbSet<JobStatusHistory> JobStatusHistories => Set<JobStatusHistory>();
+
+    private static string InList(IEnumerable<string> values) => string.Join(", ", values.Select(v => $"'{v}'"));
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -81,6 +85,56 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
                 .HasForeignKey(x => x.SearchProfileId).OnDelete(DeleteBehavior.Cascade).IsRequired();
             b.HasOne(x => x.CompanyList).WithMany(x => x.SearchProfiles)
                 .HasForeignKey(x => x.CompanyListId).OnDelete(DeleteBehavior.Restrict).IsRequired();
+        });
+
+        modelBuilder.Entity<Job>(b =>
+        {
+            b.ToTable("jobs", t =>
+            {
+                t.HasCheckConstraint("CK_jobs_title_not_blank", "char_length(btrim(\"Title\")) > 0");
+                t.HasCheckConstraint("CK_jobs_status_values", $"\"Status\" IN ({InList(JobStatuses.All)})");
+                t.HasCheckConstraint("CK_jobs_work_mode_values", $"\"WorkMode\" IS NULL OR \"WorkMode\" IN ({InList(JobWorkModes.All)})");
+                t.HasCheckConstraint("CK_jobs_employment_type_values", $"\"EmploymentType\" IS NULL OR \"EmploymentType\" IN ({InList(JobEmploymentTypes.All)})");
+                t.HasCheckConstraint("CK_jobs_experience_years_not_negative", "(\"ExperienceMinYears\" IS NULL OR \"ExperienceMinYears\" >= 0) AND (\"ExperienceMaxYears\" IS NULL OR \"ExperienceMaxYears\" >= 0)");
+                t.HasCheckConstraint("CK_jobs_experience_min_not_above_max", "\"ExperienceMinYears\" IS NULL OR \"ExperienceMaxYears\" IS NULL OR \"ExperienceMinYears\" <= \"ExperienceMaxYears\"");
+            });
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Title).IsRequired().HasMaxLength(JobLimits.Title);
+            b.Property(x => x.NormalizedTitle).IsRequired().HasMaxLength(NameNormalizer.MaxLength);
+            b.Property(x => x.ApplyUrl).HasMaxLength(JobLimits.Url);
+            b.Property(x => x.CanonicalUrl).HasMaxLength(JobLimits.Url);
+            b.Property(x => x.Location).HasMaxLength(JobLimits.Location);
+            b.Property(x => x.NormalizedLocation).HasMaxLength(NameNormalizer.MaxLength);
+            b.Property(x => x.WorkMode).HasMaxLength(10);
+            b.Property(x => x.EmploymentType).HasMaxLength(20);
+            b.Property(x => x.Department).HasMaxLength(JobLimits.Department);
+            b.Property(x => x.RequisitionId).HasMaxLength(JobLimits.RequisitionId);
+            b.Property(x => x.NormalizedRequisitionId).HasMaxLength(NameNormalizer.MaxLength);
+            b.Property(x => x.FoundOn).HasMaxLength(JobLimits.FoundOn);
+            b.Property(x => x.CreatedVia).IsRequired().HasMaxLength(20);
+            b.Property(x => x.Status).IsRequired().HasMaxLength(30);
+            b.HasOne(x => x.Employer).WithMany()
+                .HasForeignKey(x => x.EmployerId).OnDelete(DeleteBehavior.Restrict).IsRequired();
+            // Same employer + same requisition id is one job and cannot be overridden (OQ-P1.7).
+            b.HasIndex(x => new { x.EmployerId, x.NormalizedRequisitionId }).IsUnique()
+                .HasFilter("\"NormalizedRequisitionId\" IS NOT NULL");
+            b.HasIndex(x => new { x.EmployerId, x.NormalizedTitle });
+            b.HasIndex(x => x.CanonicalUrl);
+        });
+
+        modelBuilder.Entity<JobStatusHistory>(b =>
+        {
+            b.ToTable("job_status_history", t =>
+            {
+                t.HasCheckConstraint("CK_job_status_history_from_status_values", $"\"FromStatus\" IS NULL OR \"FromStatus\" IN ({InList(JobStatuses.All)})");
+                t.HasCheckConstraint("CK_job_status_history_to_status_values", $"\"ToStatus\" IN ({InList(JobStatuses.All)})");
+            });
+            b.HasKey(x => x.Id);
+            b.Property(x => x.FromStatus).HasMaxLength(30);
+            b.Property(x => x.ToStatus).IsRequired().HasMaxLength(30);
+            b.HasOne(x => x.Job).WithMany(x => x.StatusHistory)
+                .HasForeignKey(x => x.JobId).OnDelete(DeleteBehavior.Cascade).IsRequired();
+            b.HasIndex(x => new { x.JobId, x.ChangedAtUtc });
         });
     }
 }
