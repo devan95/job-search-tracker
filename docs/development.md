@@ -124,6 +124,29 @@ CI runs the same tests against a PostgreSQL 17 service and also runs
 After changing the model, add a migration: `dotnet ef migrations add <Name> --project src/JobSearchTracker.Api --startup-project src/JobSearchTracker.Api`
 (with `ConnectionStrings:Default` set). The data model is described in `data-model.md`.
 
+## End-to-end tests (Playwright)
+
+Browser tests live in `e2e/` and run against the real stack: PostgreSQL and the API from Docker Compose, and the Vite dev
+server, which Playwright starts itself (`web/` needs `npm ci` once). Only the smoke test exists today (app loads, API and
+database report healthy); workflow tests are separate tasks.
+
+```
+docker compose up -d --wait db
+docker compose run --rm migrate
+docker compose up -d api
+cd web && npm ci && cd ..
+cd e2e
+npm ci
+npx playwright install chromium
+npm test
+```
+
+Set `E2E_WEB_URL` (default `http://127.0.0.1:5173`) or `E2E_API_URL` (default `http://127.0.0.1:5080`) to point at another
+instance. Use the disposable project settings from "Verifying the workflow on a disposable database" if you do not want
+to touch your normal database, and `docker compose down` afterwards. A failed run leaves `e2e/playwright-report/` and
+`e2e/test-results/` (traces and screenshots; both are git-ignored). CI runs this as the `e2e` job and uploads them as an
+artifact on failure.
+
 ## Management API
 
 Candidates, employers, company lists and search profiles are managed through `/api/...`; see [api.md](api.md) for the
