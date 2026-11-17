@@ -90,7 +90,7 @@ function ListForm({
         value={modes}
         onChange={setModes}
         disabled={busy}
-        invalid={fieldMessages(error, 'defaultWorkModes').length > 0}
+        errors={fieldMessages(error, 'defaultWorkModes')}
       />
       <p className="hint">Nothing checked means the list states no default work mode.</p>
       <button type="submit" disabled={busy}>
@@ -328,7 +328,9 @@ export default function CompanyListsScreen() {
           listId={selectedId}
           onChanged={reload}
           onDeleted={() => {
-            setSelectedId(null)
+            // Only clear the selection if it is still the list that was deleted.
+            const deletedId = selectedId
+            setSelectedId((current) => (current === deletedId ? null : current))
             reload()
           }}
         />

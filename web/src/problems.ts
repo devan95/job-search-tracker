@@ -46,7 +46,8 @@ export function describeError(error: ApiError, subject = 'item'): ProblemView {
     return {
       code: 'network',
       heading: 'Cannot reach the API',
-      message: `The request did not reach the API (${error.message}). Check that it is running and try again.`,
+      // A failed fetch does not prove the request never arrived, so a write may have been applied.
+      message: `No answer came back from the API (${error.message}). If you were saving a change, it may or may not have been applied: reload to see the current data before trying again.`,
       details: [],
       reloadable: true,
     }

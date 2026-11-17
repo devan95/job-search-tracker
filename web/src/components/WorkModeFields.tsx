@@ -7,13 +7,29 @@ interface ChecksProps {
   value: readonly WorkMode[]
   onChange: (next: WorkMode[]) => void
   disabled?: boolean
-  invalid?: boolean
+  /** Messages the API reported for this field; shown in the group and linked to it. */
+  errors?: readonly string[]
+}
+
+/** The error text of a field group, linked to it with aria-describedby. */
+function GroupError({ id, errors }: { id: string; errors: readonly string[] }) {
+  return (
+    <p className="field-error" id={id}>
+      {errors.join(' ')}
+    </p>
+  )
 }
 
 /** A set of work-mode checkboxes. Nothing checked is the empty set. */
-export function WorkModeChecks({ legend, value, onChange, disabled, invalid }: ChecksProps) {
+export function WorkModeChecks({ legend, value, onChange, disabled, errors = [] }: ChecksProps) {
+  const errorId = useId()
+  const invalid = errors.length > 0
   return (
-    <fieldset disabled={disabled} aria-invalid={invalid || undefined}>
+    <fieldset
+      disabled={disabled}
+      aria-invalid={invalid || undefined}
+      aria-describedby={invalid ? errorId : undefined}
+    >
       <legend>{legend}</legend>
       {WORK_MODES.map((mode) => (
         <label key={mode} className="inline">
@@ -25,6 +41,7 @@ export function WorkModeChecks({ legend, value, onChange, disabled, invalid }: C
           {WORK_MODE_LABEL[mode]}
         </label>
       ))}
+      {invalid && <GroupError id={errorId} errors={errors} />}
     </fieldset>
   )
 }
@@ -34,18 +51,25 @@ interface FieldProps {
   value: WorkMode[] | null
   onChange: (next: WorkMode[] | null) => void
   disabled?: boolean
-  invalid?: boolean
+  /** Messages the API reported for this field; shown in the group and linked to it. */
+  errors?: readonly string[]
 }
 
 /**
  * Work modes of a search profile. "Inherit" (null) and an explicit set are two
  * different choices, and an explicit set may be empty.
  */
-export function WorkModeField({ value, onChange, disabled, invalid }: FieldProps) {
+export function WorkModeField({ value, onChange, disabled, errors = [] }: FieldProps) {
   const name = useId()
+  const errorId = useId()
   const inherit = value === null
+  const invalid = errors.length > 0
   return (
-    <fieldset disabled={disabled} aria-invalid={invalid || undefined}>
+    <fieldset
+      disabled={disabled}
+      aria-invalid={invalid || undefined}
+      aria-describedby={invalid ? errorId : undefined}
+    >
       <legend>Work modes</legend>
       <label className="inline">
         <input
@@ -75,6 +99,7 @@ export function WorkModeField({ value, onChange, disabled, invalid }: FieldProps
           )}
         </>
       )}
+      {invalid && <GroupError id={errorId} errors={errors} />}
     </fieldset>
   )
 }

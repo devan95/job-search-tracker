@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, it } from 'vitest'
 import type { WorkMode } from '../api'
-import { WorkModeField } from './WorkModeFields'
+import { WorkModeChecks, WorkModeField } from './WorkModeFields'
 
 function Harness({ initial }: { initial: WorkMode[] | null }) {
   const [value, setValue] = useState<WorkMode[] | null>(initial)
@@ -48,5 +48,29 @@ describe('WorkModeField', () => {
     await user.click(screen.getByLabelText('Inherit from the selected lists'))
     expect(screen.getByTestId('value')).toHaveTextContent('null')
     expect(screen.queryByLabelText('Remote')).not.toBeInTheDocument()
+  })
+
+  it('shows an error message inside the work-mode group and links it to the group', () => {
+    render(<WorkModeField value={['remote']} onChange={() => {}} errors={['Unknown work mode.']} />)
+    const group = screen.getByRole('group', { name: 'Work modes' })
+    expect(group).toHaveAttribute('aria-invalid', 'true')
+    const message = screen.getByText('Unknown work mode.')
+    expect(group).toContainElement(message)
+    expect(group).toHaveAttribute('aria-describedby', message.id)
+  })
+
+  it('links an error message to a plain work-mode checkbox group', () => {
+    render(
+      <WorkModeChecks legend="Default work modes" value={[]} onChange={() => {}} errors={['Too many.']} />,
+    )
+    const group = screen.getByRole('group', { name: 'Default work modes' })
+    expect(group).toHaveAttribute('aria-describedby', screen.getByText('Too many.').id)
+  })
+
+  it('has no error attributes without errors', () => {
+    render(<WorkModeChecks legend="Default work modes" value={[]} onChange={() => {}} />)
+    const group = screen.getByRole('group', { name: 'Default work modes' })
+    expect(group).not.toHaveAttribute('aria-invalid')
+    expect(group).not.toHaveAttribute('aria-describedby')
   })
 })

@@ -66,6 +66,10 @@ describe('describeError', () => {
       heading: 'Cannot reach the API',
       reloadable: true,
     })
+    const message = describeError(new ApiError('network', 'offline')).message
+    expect(message).toContain('offline')
+    expect(message).toContain('may or may not have been applied')
+    expect(message).not.toContain('did not reach')
     expect(describeError(new ApiError('invalid_response', 'bad')).heading).toBe('Unreadable response')
   })
 })

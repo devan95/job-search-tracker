@@ -209,15 +209,30 @@ async function send<T>(
     throw new ApiError('problem', problem.title, problem)
   }
   if (res.status === 204) return { status: 204, data: undefined as T }
+  let data: unknown
   try {
-    return { status: res.status, data: (await res.json()) as T }
+    data = await res.json()
   } catch {
     throw new ApiError('invalid_response', 'The API returned an unreadable response.')
   }
+  // Every success body in the contract is a JSON object or array; null or a scalar would crash the screens.
+  if (typeof data !== 'object' || data === null) {
+    throw new ApiError('invalid_response', 'The API returned an unexpected response.')
+  }
+  return { status: res.status, data: data as T }
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   return (await send<T>(method, path, body)).data
+}
+
+/** A list endpoint: anything but an array is an invalid response, not an empty list. */
+async function requestList<T>(path: string): Promise<T[]> {
+  const data = await request<unknown>('GET', path)
+  if (!Array.isArray(data)) {
+    throw new ApiError('invalid_response', 'The API returned an unexpected response.')
+  }
+  return data as T[]
 }
 
 const id = encodeURIComponent
@@ -225,7 +240,7 @@ const PAGE = 'take=500'
 
 // Candidates
 export const listCandidates = (): Promise<Candidate[]> =>
-  request('GET', `/candidates?${PAGE}`)
+  requestList(`/candidates?${PAGE}`)
 
 export const createCandidate = (name: string): Promise<Candidate> =>
   request('POST', '/candidates', { name })
@@ -250,7 +265,7 @@ export async function resolveEmployer(name: string): Promise<ResolvedEmployer> {
 
 // Company lists
 export const listCompanyLists = (): Promise<CompanyListSummary[]> =>
-  request('GET', `/company-lists?${PAGE}`)
+  requestList(`/company-lists?${PAGE}`)
 
 export const getCompanyList = (listId: string): Promise<CompanyListDetail> =>
   request('GET', `/company-lists/${id(listId)}`)
@@ -277,7 +292,7 @@ export const removeEmployerFromList = (
 
 // Search profiles
 export const listSearchProfiles = (): Promise<SearchProfile[]> =>
-  request('GET', `/search-profiles?${PAGE}`)
+  requestList(`/search-profiles?${PAGE}`)
 
 export const createSearchProfile = (
   input: SearchProfileCreateInput,

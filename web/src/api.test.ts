@@ -139,6 +139,22 @@ describe('management API client', () => {
     expect(init.method).toBe('DELETE')
   })
 
+  it('treats a null or scalar success body as an invalid response', async () => {
+    stub(() => new Response('null', { status: 201 }))
+    await expect(createCandidate('Asha')).rejects.toMatchObject({ kind: 'invalid_response' })
+    vi.restoreAllMocks()
+    stub(() => new Response('"ok"', { status: 200 }))
+    await expect(createCandidate('Asha')).rejects.toMatchObject({ kind: 'invalid_response' })
+  })
+
+  it('treats a list endpoint answering anything but an array as an invalid response', async () => {
+    stub(() => new Response('{}', { status: 200 }))
+    await expect(listCandidates()).rejects.toMatchObject({ kind: 'invalid_response' })
+    vi.restoreAllMocks()
+    stub(() => new Response('[]', { status: 200 }))
+    await expect(listCandidates()).resolves.toEqual([])
+  })
+
   it('throws a problem error carrying the parsed problem document', async () => {
     stub(
       () =>

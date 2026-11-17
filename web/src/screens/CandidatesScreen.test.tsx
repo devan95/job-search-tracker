@@ -1,7 +1,7 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mockApi, problem } from '../test/mockApi'
+import { deferred, mockApi, problem, type MockReply } from '../test/mockApi'
 import CandidatesScreen from './CandidatesScreen'
 
 afterEach(() => vi.restoreAllMocks())
@@ -144,5 +144,60 @@ describe('CandidatesScreen', () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'))
     render(<CandidatesScreen />)
     expect(await screen.findByRole('alert')).toHaveTextContent('Cannot reach the API')
+  })
+
+  it('links a validation message to its input', async () => {
+    mockApi({ 'GET /api/candidates': { status: 200, body: [] } })
+    const user = userEvent.setup()
+    render(<CandidatesScreen />)
+    await screen.findByText(/No candidates yet/)
+
+    await user.click(screen.getByRole('button', { name: 'Add candidate' }))
+    const input = screen.getByLabelText('Candidate name')
+    const message = screen.getByText(/name/i, { selector: '.field-error' })
+    expect(input).toHaveAttribute('aria-invalid', 'true')
+    expect(input).toHaveAttribute('aria-describedby', message.id)
+  })
+
+  it('shows a server name error against the rename input, not the add input', async () => {
+    mockApi({
+      'GET /api/candidates': { status: 200, body: [{ id: 'c1', name: 'Asha Rao' }] },
+      'PUT /api/candidates/c1': problem(400, 'validation', { errors: { name: ['Too long.'] } }),
+    })
+    const user = userEvent.setup()
+    render(<CandidatesScreen />)
+
+    await user.click(await screen.findByRole('button', { name: 'Rename Asha Rao' }))
+    await user.type(screen.getByLabelText('New name for Asha Rao'), 'x')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Too long.')
+    expect(screen.getByLabelText('New name for Asha Rao')).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByLabelText('Candidate name')).not.toHaveAttribute('aria-invalid', 'true')
+  })
+
+  it('keeps another candidate editor open when an earlier save finishes', async () => {
+    const candidates = [
+      { id: 'c1', name: 'Asha Rao' },
+      { id: 'c2', name: 'Ben Cole' },
+    ]
+    const release = deferred<MockReply>()
+    const calls = mockApi({
+      'GET /api/candidates': () => ({ status: 200, body: [...candidates] }),
+      'PUT /api/candidates/c1': () => release.promise,
+    })
+    const user = userEvent.setup()
+    render(<CandidatesScreen />)
+
+    await user.click(await screen.findByRole('button', { name: 'Rename Asha Rao' }))
+    await user.type(screen.getByLabelText('New name for Asha Rao'), '!')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await user.click(screen.getByRole('button', { name: 'Rename Ben Cole' }))
+    expect(screen.getByLabelText('New name for Ben Cole')).toBeInTheDocument()
+
+    release.resolve({ status: 200, body: { id: 'c1', name: 'Asha Rao!' } })
+    // The save succeeded: the list is reloaded, and Ben's editor must still be open.
+    await waitFor(() => expect(calls.filter((c) => c.method === 'GET')).toHaveLength(2))
+    expect(screen.getByLabelText('New name for Ben Cole')).toBeInTheDocument()
   })
 })

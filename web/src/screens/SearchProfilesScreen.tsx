@@ -168,7 +168,7 @@ function ProfileForm({
         value={workModes}
         onChange={setWorkModes}
         disabled={busy}
-        invalid={fieldMessages(error, 'workModes').length > 0}
+        errors={fieldMessages(error, 'workModes')}
       />
 
       <fieldset disabled={busy}>
@@ -306,6 +306,9 @@ function ProfilesLoaded({ candidates, lists, profiles, reload }: LoadedProps) {
             <li key={profile.id}>
               {editingId === profile.id ? (
                 <ProfileForm
+                  // Remount when the server's copy changes, so after a partly applied save the
+                  // form shows what the server now holds instead of stale local edits.
+                  key={JSON.stringify(profile)}
                   title="Edit search profile"
                   initial={{
                     candidateId: profile.candidateId,

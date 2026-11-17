@@ -43,13 +43,43 @@ describe('App', () => {
     render(<App />)
 
     expect(await screen.findByRole('heading', { name: 'Candidates' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Candidates' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('tab', { name: 'Candidates' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tabpanel', { name: 'Candidates' })).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Company lists' }))
+    await user.click(screen.getByRole('tab', { name: 'Company lists' }))
     expect(await screen.findByRole('heading', { name: 'Company lists' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Candidates' })).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Search profiles' }))
+    await user.click(screen.getByRole('tab', { name: 'Search profiles' }))
     expect(await screen.findByRole('heading', { name: 'Search profiles' })).toBeInTheDocument()
+  })
+
+  it('moves between the tabs with the arrow, Home and End keys', async () => {
+    mockFetch(200, { status: 'ok', database: 'ok' })
+    const user = userEvent.setup()
+    render(<App />)
+    const candidates = screen.getByRole('tab', { name: 'Candidates' })
+    candidates.focus()
+
+    await user.keyboard('{ArrowRight}')
+    expect(screen.getByRole('tab', { name: 'Company lists' })).toHaveFocus()
+    expect(screen.getByRole('tab', { name: 'Company lists' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: 'Candidates' })).toHaveAttribute('tabindex', '-1')
+
+    await user.keyboard('{End}')
+    expect(screen.getByRole('tab', { name: 'Search profiles' })).toHaveFocus()
+
+    await user.keyboard('{ArrowRight}')
+    expect(screen.getByRole('tab', { name: 'Candidates' })).toHaveFocus()
+
+    await user.keyboard('{ArrowLeft}')
+    expect(screen.getByRole('tab', { name: 'Search profiles' })).toHaveFocus()
+
+    await user.keyboard('{Home}')
+    expect(screen.getByRole('tab', { name: 'Candidates' })).toHaveFocus()
+    expect(screen.getByRole('tabpanel', { name: 'Candidates' })).toBeInTheDocument()
+
+    await user.keyboard('x')
+    expect(screen.getByRole('tab', { name: 'Candidates' })).toHaveFocus()
   })
 })
