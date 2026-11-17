@@ -1,0 +1,23 @@
+{
+  "repository": "devan95/job-search-tracker",
+  "pull_number": 123,
+  "commit_id": "0123456789abcdef0123456789abcdef01234567",
+  "event": "COMMENT",
+  "body": "## Review summary\n\n**Recommendation: Changes required.**\n\nSummarize the overall assessment, scope concerns, evidence gaps, and questions that are not tied to one changed line. Do not repeat every inline finding here.",
+  "comments": [
+    {
+      "path": "src/Example.cs",
+      "line": 42,
+      "side": "RIGHT",
+      "body": "**Medium — Example finding**\n\nExplain the concrete issue, its impact, and the recommended correction."
+    },
+    {
+      "path": "src/Example.cs",
+      "start_line": 51,
+      "start_side": "RIGHT",
+      "line": 54,
+      "side": "RIGHT",
+      "body": "**Low — Multi-line example**\n\nUse start_line/start_side together with line/side when the comment applies to a range."
+    }
+  ]
+}
