@@ -113,6 +113,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             b.Property(x => x.FoundOn).HasMaxLength(JobLimits.FoundOn);
             b.Property(x => x.CreatedVia).IsRequired().HasMaxLength(20);
             b.Property(x => x.Status).IsRequired().HasMaxLength(30);
+            // PostgreSQL's xmin system column is the row version: two concurrent writes of the same job cannot both succeed.
+            // It is a system column, so it adds no column and needs no migration.
+            b.Property<uint>("xmin").HasColumnName("xmin").HasColumnType("xid")
+                .ValueGeneratedOnAddOrUpdate().IsConcurrencyToken();
             b.HasOne(x => x.Employer).WithMany()
                 .HasForeignKey(x => x.EmployerId).OnDelete(DeleteBehavior.Restrict).IsRequired();
             // Same employer + same requisition id is one job and cannot be overridden (OQ-P1.7).

@@ -1,3 +1,4 @@
+using System.Data;
 using JobSearchTracker.Api.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -141,8 +142,8 @@ public static class JobEndpoints
 
     private static async Task<IResult> GetAsync(Guid id, AppDbContext db, CancellationToken ct)
     {
-        var job = await db.Jobs.AsNoTracking().Include(j => j.Employer).SingleOrDefaultAsync(j => j.Id == id, ct);
-        return job is null ? ApiResults.NotFound("Job", id) : Results.Ok(JobResponse.From(job, await HistoryAsync(db, id, ct)));
+        var response = await LoadAsync(db, id, ct);
+        return response is null ? ApiResults.NotFound("Job", id) : Results.Ok(response);
     }
 
     private static async Task<IResult> UpdateAsync(Guid id, JobRequest? request, AppDbContext db, CancellationToken ct)
@@ -168,17 +169,20 @@ public static class JobEndpoints
             // Only re-check what this update changes, so editing a job that was once confirmed as "a different job"
             // is not blocked again by the job it was confirmed against.
             var checks = JobChecks.None;
-            if (employerChanged || job.NormalizedRequisitionId != details.NormalizedRequisitionId)
+            var requisitionChanged = job.NormalizedRequisitionId != details.NormalizedRequisitionId;
+            if (employerChanged || requisitionChanged)
             {
                 checks |= JobChecks.Requisition;
             }
 
-            if (job.CanonicalUrl != details.CanonicalUrl)
+            // A changed requisition id (including clearing it) changes which jobs the URL and title + location rules can
+            // match, so those two warnings are re-checked too; otherwise clearing the id would silently skip them.
+            if (job.CanonicalUrl != details.CanonicalUrl || requisitionChanged)
             {
                 checks |= JobChecks.Url;
             }
 
-            if (employerChanged || job.NormalizedTitle != details.NormalizedTitle || job.NormalizedLocation != details.NormalizedLocation)
+            if (employerChanged || requisitionChanged || job.NormalizedTitle != details.NormalizedTitle || job.NormalizedLocation != details.NormalizedLocation)
             {
                 checks |= JobChecks.TitleLocation;
             }
@@ -208,6 +212,10 @@ public static class JobEndpoints
             {
                 await db.SaveChangesAsync(ct);
             }
+            catch (DbUpdateConcurrencyException)
+            {
+                return ConcurrentChange(id);
+            }
             catch (DbUpdateException ex) when (DbErrors.IsUniqueViolation(ex))
             {
                 var constraint = DbErrors.ConstraintName(ex);
@@ -226,7 +234,8 @@ public static class JobEndpoints
                 throw;
             }
 
-            return Results.Ok(JobResponse.From(job, await HistoryAsync(db, id, ct)));
+            var response = await LoadAsync(db, id, ct);
+            return response is null ? ApiResults.NotFound("Job", id) : Results.Ok(response);
         }
     }
 
@@ -254,11 +263,21 @@ public static class JobEndpoints
                 new Dictionary<string, object?> { ["currentStatus"] = job.Status, ["requestedStatus"] = status });
         }
 
+        // The job row carries a version (xmin), so of two concurrent changes made from the same status only one is saved; the
+        // other gets 409. The status update and its history row are saved in one transaction.
         var entry = job.ChangeStatus(status!, DateTimeOffset.UtcNow);
         db.JobStatusHistories.Add(entry);
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return ConcurrentChange(id);
+        }
 
-        return Results.Ok(JobResponse.From(job, await HistoryAsync(db, id, ct)));
+        var response = await LoadAsync(db, id, ct);
+        return response is null ? ApiResults.NotFound("Job", id) : Results.Ok(response);
     }
 
     private static async Task<IResult> DeleteAsync(Guid id, AppDbContext db, CancellationToken ct)
@@ -273,6 +292,10 @@ public static class JobEndpoints
         try
         {
             await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return ConcurrentChange(id);
         }
         catch (DbUpdateException ex) when (DbErrors.IsForeignKeyViolation(ex))
         {
@@ -298,6 +321,27 @@ public static class JobEndpoints
             from != to && from is JobStatuses.Open or JobStatuses.Reopened or JobStatuses.Closed or JobStatuses.Expired or JobStatuses.Unavailable,
         _ => false,
     };
+
+    /// <summary>Reads the job and its history in one repeatable-read transaction, so both always come from the same snapshot.</summary>
+    private static async Task<JobResponse?> LoadAsync(AppDbContext db, Guid id, CancellationToken ct)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, ct);
+        var job = await db.Jobs.AsNoTracking().Include(j => j.Employer).SingleOrDefaultAsync(j => j.Id == id, ct);
+        if (job is null)
+        {
+            return null;
+        }
+
+        var history = await HistoryAsync(db, id, ct);
+        await transaction.CommitAsync(ct);
+        return JobResponse.From(job, history);
+    }
+
+    private static IResult ConcurrentChange(Guid id) =>
+        ApiResults.Conflict(
+            ApiResults.ConcurrentModificationCode,
+            "Job was changed by someone else",
+            $"Job {id} was changed or deleted while this request was running. Reload it and try again.");
 
     private static async Task<List<JobStatusHistory>> HistoryAsync(AppDbContext db, Guid jobId, CancellationToken ct) =>
         await db.JobStatusHistories.AsNoTracking().Where(h => h.JobId == jobId).OrderBy(h => h.ChangedAtUtc).ToListAsync(ct);

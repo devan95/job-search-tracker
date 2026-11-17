@@ -142,6 +142,22 @@ public class JobDataModelTests : DatabaseTestBase
     }
 
     [Fact]
+    public async Task Two_contexts_changing_the_same_job_cannot_both_save()
+    {
+        var created = await AddJobAsync(await AddEmployerAsync(), Details());
+        await using var first = Db.CreateContext();
+        await using var second = Db.CreateContext();
+        var firstJob = await first.Jobs.SingleAsync(j => j.Id == created.Id);
+        var secondJob = await second.Jobs.SingleAsync(j => j.Id == created.Id);
+
+        first.JobStatusHistories.Add(firstJob.ChangeStatus(JobStatuses.Closed, DateTimeOffset.UtcNow));
+        await first.SaveChangesAsync();
+        second.JobStatusHistories.Add(secondJob.ChangeStatus(JobStatuses.Expired, DateTimeOffset.UtcNow));
+
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => second.SaveChangesAsync());
+    }
+
+    [Fact]
     public async Task The_status_history_only_accepts_defined_statuses()
     {
         var job = await AddJobAsync(await AddEmployerAsync(), Details());

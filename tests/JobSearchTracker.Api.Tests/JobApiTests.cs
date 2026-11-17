@@ -386,6 +386,21 @@ public class JobApiTests : ApiTestBase
     }
 
     [Fact]
+    public async Task Put_that_clears_the_requisition_id_re_checks_title_and_location_duplicates()
+    {
+        await NewJobAsync("Acme", "Backend Engineer", new { location = "Pune" });
+        var second = await NewJobAsync("Acme", "Backend Engineer", new { location = "Pune", requisitionId = "R-2" });
+        var body = new { employer = "Acme", title = "Backend Engineer", location = "Pune" };
+
+        var warning = await PutAsync($"/api/jobs/{second}", body);
+        var confirmed = await PutAsync($"/api/jobs/{second}", new { body.employer, body.title, body.location, confirmDifferentJob = true });
+
+        AssertProblem(warning, HttpStatusCode.Conflict, "possible_duplicate");
+        Assert.Equal(HttpStatusCode.OK, confirmed.Status);
+        Assert.Equal(JsonValueKind.Null, (await GetAsync($"/api/jobs/{second}")).Body.GetProperty("requisitionId").ValueKind);
+    }
+
+    [Fact]
     public async Task Put_to_another_jobs_url_warns_and_can_be_confirmed()
     {
         await NewJobAsync("Acme", "Role A", new { applyUrl = "https://example.com/jobs/1" });

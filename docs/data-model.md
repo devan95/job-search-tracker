@@ -3,7 +3,7 @@
 Task: *Data model: candidate, company list, search profile, with first EF Core migration.*
 Approved by the user on 2026-11-14 (decisions U1-U9, acceptance criteria AC1-AC9).
 
-## Tables (exactly eight; the EF `__EFMigrationsHistory` table is not counted)
+## Tables (exactly six; the EF `__EFMigrationsHistory` table is not counted)
 
 | Table | Purpose | Key columns |
 | --- | --- | --- |
@@ -13,8 +13,6 @@ Approved by the user on 2026-11-14 (decisions U1-U9, acceptance criteria AC1-AC9
 | `company_list_employers` | Join: employers in a list. An employer can be in many lists. | PK (`CompanyListId`, `EmployerId`) |
 | `search_profiles` | A candidate's reusable search configuration. | `Id`, `CandidateId`, `Name`, `NormalizedName`, `WorkModes` (nullable), `CompanyMonitoringEnabled`, `BroadSearchEnabled`, `ProfileVersion` |
 | `search_profile_company_lists` | Join: company lists a profile selects. | PK (`SearchProfileId`, `CompanyListId`) |
-| `jobs` | Canonical job record (Order 6, migration `20261117060000_AddJobs`). Global, not per candidate. Manual in Phase 1; Phase 2 source listings will point at it. | `Id`, `EmployerId`, `Title`, `NormalizedTitle`, `CanonicalUrl`, `NormalizedLocation`, `NormalizedRequisitionId`, `Status`, `CreatedVia` |
-| `job_status_history` | One timestamped row per job status transition (the first row has no `FromStatus`). | `Id`, `JobId`, `FromStatus`, `ToStatus`, `ChangedAtUtc` |
 
 ## Decisions
 
@@ -57,16 +55,32 @@ rule later requires a data migration that recomputes `NormalizedName`.
 | `company_lists` -> `company_list_employers` | CASCADE | Deleting a list removes its employer links only. |
 | `employers` -> `company_list_employers` | RESTRICT | An employer that is in a list cannot be deleted. |
 | `company_lists` -> `search_profile_company_lists` | RESTRICT | A list a profile still selects cannot be deleted. |
+
+The rows above for `company_lists`/`search_profile_company_lists` and the CASCADE/RESTRICT split were applied from the
+approved "proposed cascade/restrict relationships" (U8); see "Assumptions to confirm".
+
+## Jobs (Order 6; decisions OQ-P1.4 to OQ-P1.7, answered 2026-11-15)
+
+Order 6 (migration `20261117060000_AddJobs`) adds two tables, so the model has eight tables in total; the heading above and the
+first table describe the original six.
+
+| Table | Purpose | Key columns |
+| --- | --- | --- |
+| `jobs` | Canonical job record. Global, not per candidate. Manual in Phase 1; Phase 2 source listings will point at it. | `Id`, `EmployerId`, `Title`, `NormalizedTitle`, `CanonicalUrl`, `NormalizedLocation`, `NormalizedRequisitionId`, `Status`, `CreatedVia` |
+| `job_status_history` | One timestamped row per job status transition (the first row has no `FromStatus`). | `Id`, `JobId`, `FromStatus`, `ToStatus`, `ChangedAtUtc` |
+
+Delete rules:
+
+| Relationship | On delete | Meaning |
+| --- | --- | --- |
 | `employers` -> `jobs` | RESTRICT | An employer that has jobs cannot be deleted. |
 | `jobs` -> `job_status_history` | CASCADE | Deleting a job removes its history only. |
 
 Tables that will reference a job later (applications, source listings) must use RESTRICT, so a job that has either cannot
 be hard-deleted (OQ-P1.6); the API maps that foreign-key failure to `409 job_in_use`.
 
-The rows above for `company_lists`/`search_profile_company_lists` and the CASCADE/RESTRICT split were applied from the
-approved "proposed cascade/restrict relationships" (U8); see "Assumptions to confirm".
-
-## Jobs (Order 6; decisions OQ-P1.4 to OQ-P1.7, answered 2026-11-15)
+Concurrency: `jobs` uses PostgreSQL's `xmin` system column as an optimistic concurrency token (no column or migration DDL; it is
+only in the EF model), so two concurrent changes to one job cannot both be saved.
 
 Field names follow Phase 2 S2.1 D1, which Phase 2 extends (source listings, content hash, updated times) without renaming.
 
@@ -95,7 +109,7 @@ not unique indexes, because the user may confirm them.
 
 ## Deferred requirements (AC7)
 
-Not in this model: location sets, role lists and aliases, applications, job source listings, scan runs, employer website/career URL/ATS, source catalog and per-source enablement, automatic `ProfileVersion` increment. Their owner and phase are on the Notion Task Board and Product Requirements; the API is in [api.md](api.md).
+Not in this model: location sets, role lists and aliases, employer website/career URL/ATS, source catalog and per-source enablement, automatic `ProfileVersion` increment. Their owner and phase are on the Notion Task Board and Product Requirements; the API is in [api.md](api.md).
 
 ## Assumptions to confirm
 

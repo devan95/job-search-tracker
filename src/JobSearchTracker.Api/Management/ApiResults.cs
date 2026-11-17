@@ -22,6 +22,7 @@ internal static class ApiResults
     public const string PossibleDuplicateCode = "possible_duplicate";
     public const string InvalidStatusTransitionCode = "invalid_status_transition";
     public const string JobInUseCode = "job_in_use";
+    public const string ConcurrentModificationCode = "concurrent_modification";
 
     public static IResult NotFound(string what, Guid id) =>
         Problem(StatusCodes.Status404NotFound, NotFoundCode, $"{what} not found", $"No {what.ToLowerInvariant()} with id {id} exists.");

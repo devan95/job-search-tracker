@@ -40,6 +40,7 @@ List endpoints take `skip` (default 0) and `take` (default 100, at most 500) and
 | `possible_duplicate` | 409 | Same canonical URL, or same employer + title + location (`existingId`, `matchedOn`). Resend with `confirmDifferentJob: true` if it is a different job |
 | `invalid_status_transition` | 409 | The job's current status does not allow the requested status (`currentStatus`, `requestedStatus`) |
 | `job_in_use` | 409 | Delete of a job that an application or source listing references (none exist yet) |
+| `concurrent_modification` | 409 | The job was changed or deleted by someone else while the request ran. Reload and retry |
 
 Work modes are arrays of `remote`, `onSite`, `hybrid` (case-insensitive on input; repeated values count once).
 
@@ -64,7 +65,7 @@ Work modes are arrays of `remote`, `onSite`, `hybrid` (case-insensitive on input
 | `GET /employers?q=` | | `q` is a normalized substring filter; ordered by normalized name |
 | `GET /employers/lookup?name=` | | Exact canonical lookup: 200 or 404 |
 | `GET /employers/{id}` | | |
-| `DELETE /employers/{id}` | | 409 `employer_in_company_list` while it is in any list, 409 `employer_has_jobs` while it has jobs |
+| `DELETE /employers/{id}` | | 409 `employer_in_company_list` while it is in any list |
 
 There is no employer rename or update in Phase 1.
 
@@ -124,7 +125,8 @@ as `{ id, name }`.
 same status. Anything else is 409 `invalid_status_transition`. `new` and `verificationPending` are system-only (400 when requested,
 and a job in either cannot be changed by the user). A job status never changes an application's status.
 
-**Duplicates (warn and confirm).** Checked on create, and on update only for what the update changes.
+**Duplicates (warn and confirm).** Checked on create, and on update only for what the update changes. Changing or clearing the
+requisition id also re-checks the URL and the title + location rules, because it changes which jobs they can match.
 
 1. Same employer + same requisition id (normalized): 409 `duplicate_requisition`, never overridable.
 2. Different requisition ids never match, whatever the title, location or URL are.
@@ -139,7 +141,12 @@ Tracking parameters (names are case-insensitive): `utm_*`, `fbclid`, `gclid`, `d
 `gh_jid` and `currentJobId` are kept. `ApplyUrl` is stored as typed; `canonicalUrl` is returned for reference.
 
 **Delete.** A job with no application and no source listing is hard-deleted with its status history; the employer stays. Closed
-or expired is the archive for jobs that have an application.
+or expired is the archive for jobs that have an application. `DELETE /employers/{id}` also returns 409 `employer_has_jobs`
+(`jobCount`) while the employer has jobs.
+
+**Concurrency.** Status changes, updates and deletes are version-checked (PostgreSQL `xmin`): of two concurrent changes to the
+same job only one is saved and the other gets 409 `concurrent_modification`. `GET` and the response of a change read the job
+and its status history from one snapshot.
 
 ## Examples
 
