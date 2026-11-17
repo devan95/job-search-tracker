@@ -8,7 +8,8 @@ on:
 permissions:
   contents: read
 
-# A newer push to the same pull request supersedes the older run. Runs on main are never cancelled.
+# A newer push to the same pull request supersedes the older run.
+# Runs on main are never cancelled.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -42,8 +43,6 @@ jobs:
       - run: dotnet tool restore
       - run: dotnet build JobSearchTracker.slnx --no-restore -c Release
       - name: EF model matches migrations
-        # Fails when the model changed without a new migration. No database connection is made;
-        # the placeholder only lets the design-time host create the DbContext.
         env:
           ConnectionStrings__Default: Host=localhost;Database=design_time_only;Username=none;Password=none
         run: dotnet ef migrations has-pending-model-changes --project src/JobSearchTracker.Api --startup-project src/JobSearchTracker.Api --no-build --configuration Release
@@ -71,7 +70,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: read   # gitleaks-action lists PR commits; without this it fails with "Resource not accessible by integration"
+      pull-requests: read
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
@@ -80,3 +79,78 @@ jobs:
       - uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  dependency-review:
+    name: Dependency Review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check dependency changes
+        uses: actions/dependency-review-action@v5
+        with:
+          fail-on-severity: high
+
+  sonarqube:
+    name: SonarQube Cloud analysis
+    # Fork PRs do not receive GitHub OIDC permission.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Restore .NET dependencies
+        run: dotnet restore JobSearchTracker.slnx
+
+      - name: Install frontend dependencies for TypeScript analysis
+        run: npm ci --prefix web
+
+      - name: Install SonarScanner for .NET
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/sonar-scanner"
+          dotnet tool install dotnet-sonarscanner --tool-path "$RUNNER_TEMP/sonar-scanner"
+
+      - name: Authenticate to SonarQube Cloud (secretless)
+        id: sonar-auth
+        uses: SonarSource/sonarqube-auth-action@a0aa643acde4162396015b4f12536c1b9c4aab82
+        with:
+          export-env: false
+
+      - name: Begin SonarQube analysis
+        env:
+          SONAR_TOKEN: ${{ steps.sonar-auth.outputs.sonar-token }}
+        shell: bash
+        run: |
+          "$RUNNER_TEMP/sonar-scanner/dotnet-sonarscanner" begin \
+            /k:"${{ steps.sonar-auth.outputs.project-key }}" \
+            /o:"${{ steps.sonar-auth.outputs.organization }}" \
+            /d:sonar.token="$SONAR_TOKEN" \
+            /d:sonar.scanner.scanAll=true
+
+      - name: Build solution for SonarQube analysis
+        run: dotnet build JobSearchTracker.slnx --no-restore -c Release
+
+      - name: End SonarQube analysis
+        env:
+          SONAR_TOKEN: ${{ steps.sonar-auth.outputs.sonar-token }}
+        shell: bash
+        run: |
+          "$RUNNER_TEMP/sonar-scanner/dotnet-sonarscanner" end \
+            /d:sonar.token="$SONAR_TOKEN"
