@@ -1,7 +1,19 @@
 import { useEffect, useState } from 'react'
 import { fetchHealth, type HealthResult } from './api'
+import CandidatesScreen from './screens/CandidatesScreen'
+import CompanyListsScreen from './screens/CompanyListsScreen'
+import SearchProfilesScreen from './screens/SearchProfilesScreen'
 
 type ViewState = { kind: 'checking' } | HealthResult
+
+type Section = 'candidates' | 'lists' | 'profiles'
+
+// Setup order: a candidate, then company lists, then a search profile that ties them together.
+const SECTIONS: { id: Section; label: string }[] = [
+  { id: 'candidates', label: 'Candidates' },
+  { id: 'lists', label: 'Company lists' },
+  { id: 'profiles', label: 'Search profiles' },
+]
 
 const DATABASE_LABEL = {
   ok: 'Connected',
@@ -11,6 +23,7 @@ const DATABASE_LABEL = {
 
 export default function App() {
   const [state, setState] = useState<ViewState>({ kind: 'checking' })
+  const [section, setSection] = useState<Section>('candidates')
 
   useEffect(() => {
     let cancelled = false
@@ -26,9 +39,26 @@ export default function App() {
     <main className="app">
       <h1>Job Search &amp; Application Tracker</h1>
       <p className="subtitle">
-        Phase 0 foundation. Job discovery, profiles and application tracking are
+        Lists and profiles. Job discovery, matching and application tracking are
         not built yet.
       </p>
+
+      <nav aria-label="Sections" className="tabs">
+        {SECTIONS.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            aria-current={section === s.id ? 'page' : undefined}
+            onClick={() => setSection(s.id)}
+          >
+            {s.label}
+          </button>
+        ))}
+      </nav>
+
+      {section === 'candidates' && <CandidatesScreen />}
+      {section === 'lists' && <CompanyListsScreen />}
+      {section === 'profiles' && <SearchProfilesScreen />}
 
       <section aria-labelledby="system-status">
         <h2 id="system-status">System status</h2>
