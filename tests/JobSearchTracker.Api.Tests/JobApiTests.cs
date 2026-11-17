@@ -389,7 +389,8 @@ public class JobApiTests : ApiTestBase
     public async Task Put_that_clears_the_requisition_id_re_checks_title_and_location_duplicates()
     {
         await NewJobAsync("Acme", "Backend Engineer", new { location = "Pune" });
-        var second = await NewJobAsync("Acme", "Backend Engineer", new { location = "Pune", requisitionId = "R-2" });
+        // A job without a requisition id can match one with a requisition id, so the second create must be confirmed.
+        var second = await NewJobAsync("Acme", "Backend Engineer", new { location = "Pune", requisitionId = "R-2", confirmDifferentJob = true });
         var body = new { employer = "Acme", title = "Backend Engineer", location = "Pune" };
 
         var warning = await PutAsync($"/api/jobs/{second}", body);
