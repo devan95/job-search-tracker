@@ -111,12 +111,16 @@ try {
 
         $right = @{}
         $left = @{}
+        $rightHunks = @{}
+        $leftHunks = @{}
         $oldLine = 0
         $newLine = 0
+        $hunkId = 0
         foreach ($patchLine in ([string]$file.patch -split "`n")) {
             if ($patchLine -match '^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@') {
                 $oldLine = [int]$Matches[1]
                 $newLine = [int]$Matches[3]
+                $hunkId++
                 continue
             }
             # GitHub's per-file patch contains hunk bodies, not the file-level +++/--- headers.
@@ -124,18 +128,28 @@ try {
             if ($patchLine.StartsWith('\')) { continue }
             if ($patchLine.StartsWith('+')) {
                 Add-PatchLine $right $newLine
+                $rightHunks[[string]$newLine] = $hunkId
                 $newLine++
             } elseif ($patchLine.StartsWith('-')) {
                 Add-PatchLine $left $oldLine
+                $leftHunks[[string]$oldLine] = $hunkId
                 $oldLine++
             } elseif ($patchLine.StartsWith(' ')) {
                 Add-PatchLine $right $newLine
                 Add-PatchLine $left $oldLine
+                $rightHunks[[string]$newLine] = $hunkId
+                $leftHunks[[string]$oldLine] = $hunkId
                 $newLine++
                 $oldLine++
             }
         }
-        $diffMap[[string]$file.filename] = @{ right = $right; left = $left; unavailable = $false }
+        $diffMap[[string]$file.filename] = @{
+            right = $right
+            left = $left
+            rightHunks = $rightHunks
+            leftHunks = $leftHunks
+            unavailable = $false
+        }
     }
 
     $validatedComments = @()
@@ -188,6 +202,12 @@ try {
             }
             if ($startSide -ne $side -or $startLine -gt $line) {
                 Stop-Review "Multi-line comment range must use the same side and start at or before the ending line."
+            }
+            $hunkMapKey = $startKey + 'Hunks'
+            $startHunk = $fileDiff[$hunkMapKey][[string]$startLine]
+            $endHunk = $fileDiff[$hunkMapKey][[string]$line]
+            if ($null -eq $startHunk -or $null -eq $endHunk -or $startHunk -ne $endHunk) {
+                Stop-Review "Multi-line comment range on '$path' must stay within one diff hunk."
             }
             $apiComment.start_line = $startLine
             $apiComment.start_side = $startSide
