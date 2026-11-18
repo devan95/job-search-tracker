@@ -30,24 +30,55 @@ function Fail([string]$m) {
 
 function Rollback {
     # Only reached before the commit, on a tree that was clean when the script started.
+    $rollbackFailures = @()
+    $rollbackComplete = $true
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
     try {
         Set-Location -LiteralPath $script:repo
-        $ErrorActionPreference = 'Continue'
         & git reset --hard HEAD *> $null
+        if ($LASTEXITCODE -ne 0) {
+            $rollbackFailures += 'git reset --hard HEAD'
+            $rollbackComplete = $false
+        }
         $own = @($script:manifest.files)
-        if ($own.Count -gt 0) { & git clean -fdq -- @own *> $null }
-        if ($script:updateMode) {
-            # The branch already existed and was pushed: keep it, only undo the uncommitted changes.
-            Write-Host "Rolled back: working tree on $($script:manifest.branch) restored to its last commit." -ForegroundColor Yellow
-        } else {
+        if ($own.Count -gt 0) {
+            & git clean -fdq -- @own *> $null
+            if ($LASTEXITCODE -ne 0) {
+                $rollbackFailures += 'git clean -fdq for manifest files'
+                $rollbackComplete = $false
+            }
+        }
+        if ($rollbackComplete -and -not $script:updateMode) {
             & git switch main *> $null
-            & git branch -D $script:manifest.branch *> $null
-            Write-Host "Rolled back: branch $($script:manifest.branch) removed, working tree restored." -ForegroundColor Yellow
+            if ($LASTEXITCODE -ne 0) {
+                $rollbackFailures += 'git switch main'
+                $rollbackComplete = $false
+            } else {
+                & git branch -D $script:manifest.branch *> $null
+                if ($LASTEXITCODE -ne 0) {
+                    $rollbackFailures += "git branch -D $($script:manifest.branch)"
+                    $rollbackComplete = $false
+                }
+            }
+        }
+        if ($rollbackComplete) {
+            if ($script:updateMode) {
+                Write-Host "Rollback completed: working tree on $($script:manifest.branch) restored to its last commit." -ForegroundColor Yellow
+            } else {
+                Write-Host "Rollback completed: branch $($script:manifest.branch) removed, working tree restored." -ForegroundColor Yellow
+            }
+        } else {
+            Write-Host "Rollback incomplete (failed: $($rollbackFailures -join '; ')). Check 'git status' in $($script:repo) before retrying." -ForegroundColor Yellow
+            & git status --short
         }
     } catch {
-        Write-Host "Rollback incomplete; check 'git status' in $($script:repo)." -ForegroundColor Yellow
+        Write-Host "Rollback incomplete: $($_.Exception.Message). Check 'git status' in $($script:repo) before retrying." -ForegroundColor Yellow
+        & git status --short
+    } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+        $script:branchCreated = $false
     }
-    $script:branchCreated = $false
 }
 
 # Runs git, stops the whole script on a non-zero exit code.
@@ -140,6 +171,13 @@ $deleted = @($manifest.deleted | ForEach-Object { "$_" -replace '\\', '/' })
 if ($files.Count + $deleted.Count -eq 0) { Fail "Manifest lists no files." }
 foreach ($p in ($files + $deleted)) {
     if (-not (Test-SafePath $p)) { Fail "Unsafe path in manifest: '$p'." }
+}
+# The root launcher is a required package helper, never a repository path in the manifest.
+$rootLauncherInManifest = @($files + $deleted | Where-Object {
+    ([string]$_).TrimEnd([char[]]@('.', ' ')) -ieq 'run-delivery.cmd'
+})
+if ($rootLauncherInManifest.Count -gt 0) {
+    Fail "The package-root run-delivery.cmd is reserved for the launcher and must not appear in manifest.files or manifest.deleted."
 }
 foreach ($p in $files) {
     if ($deleted -contains $p) { Fail "Path is listed as both changed and deleted: $p" }
