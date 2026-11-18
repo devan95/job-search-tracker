@@ -34,6 +34,11 @@ public abstract class DatabaseTestBase : IAsyncLifetime
 
     protected const string UniqueViolation = "23505";
     protected const string ForeignKeyViolation = "23503";
+    protected const string RestrictViolation = "23001";
+
+    /// <summary>Deleting a row that is still referenced (ON DELETE RESTRICT) raises 23503 before PostgreSQL 18 and 23001 from 18 on.</summary>
+    protected static void AssertDeleteBlocked(string sqlState) =>
+        Assert.True(sqlState is ForeignKeyViolation or RestrictViolation, $"Expected 23503 or 23001 but got {sqlState}");
     protected const string CheckViolation = "23514";
 
     protected async Task<Candidate> AddCandidateAsync(string name = "Test Candidate")

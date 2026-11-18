@@ -91,7 +91,7 @@ public class JobDataModelTests : DatabaseTestBase
 
         var state = await SqlStateOfAsync(() => Db.ExecuteAsync($"DELETE FROM employers WHERE \"Id\" = '{employer.Id}'"));
 
-        Assert.Equal(ForeignKeyViolation, state);
+        AssertDeleteBlocked(state);
     }
 
     [Fact]
