@@ -2,7 +2,7 @@
 # exposed beyond this machine. The web app runs with `npm run dev` for now.
 services:
   db:
-    image: postgres:17
+    image: postgres:18
     environment:
       POSTGRES_DB: jobsearch
       POSTGRES_USER: jobsearch
@@ -10,7 +10,7 @@ services:
     ports:
       - "127.0.0.1:${DB_HOST_PORT:-5432}:5432"
     volumes:
-      - db-data:/var/lib/postgresql/data
+      - db-data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U jobsearch -d jobsearch"]
       interval: 5s
