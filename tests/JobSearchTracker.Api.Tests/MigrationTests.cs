@@ -16,14 +16,32 @@ public class MigrationTests
         Assert.Empty(await TablesAsync(db));
 
         await db.MigrateToAsync(null);
-        Assert.Equal(8, (await TablesAsync(db)).Count);
+        Assert.Equal(10, (await TablesAsync(db)).Count);
 
         await db.MigrateToAsync("0");
         Assert.Empty(await TablesAsync(db));
         Assert.Empty(await db.QueryAsync("SELECT \"MigrationId\" FROM \"__EFMigrationsHistory\"", r => r.GetString(0)));
 
         await db.MigrateToAsync(null);
-        Assert.Equal(8, (await TablesAsync(db)).Count);
+        Assert.Equal(10, (await TablesAsync(db)).Count);
+    }
+
+    [Fact]
+    public async Task The_applications_migration_reverts_alone_and_leaves_the_eight_earlier_tables_and_no_trigger_function()
+    {
+        await using var db = await TestDatabase.CreateEmptyAsync();
+        await db.MigrateToAsync(null);
+
+        await db.MigrateToAsync("20261117060000_AddJobs");
+
+        var tables = await TablesAsync(db);
+        Assert.Equal(8, tables.Count);
+        Assert.DoesNotContain("applications", tables);
+        Assert.DoesNotContain("application_audit", tables);
+        Assert.Empty(await db.QueryAsync("SELECT proname FROM pg_proc WHERE proname = 'application_audit_append_only'", r => r.GetString(0)));
+
+        await db.MigrateToAsync(null);
+        Assert.Equal(10, (await TablesAsync(db)).Count);
     }
 
     [Fact]

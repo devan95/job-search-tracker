@@ -5,12 +5,12 @@ public class SchemaTests : DatabaseTestBase
 {
     private static readonly string[] ExpectedTables =
     [
-        "candidates", "company_list_employers", "company_lists", "employers",
+        "application_audit", "applications", "candidates", "company_list_employers", "company_lists", "employers",
         "job_status_history", "jobs", "search_profile_company_lists", "search_profiles",
     ];
 
     [Fact]
-    public async Task Exactly_eight_application_tables_exist_excluding_the_migration_history()
+    public async Task Exactly_ten_application_tables_exist_excluding_the_migration_history()
     {
         var tables = await Db.QueryAsync(
             "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' " +
@@ -22,10 +22,10 @@ public class SchemaTests : DatabaseTestBase
     }
 
     [Fact]
-    public async Task Migration_history_table_records_exactly_the_two_migrations()
+    public async Task Migration_history_table_records_exactly_the_three_migrations()
     {
         var applied = await Db.QueryAsync("SELECT \"MigrationId\" FROM \"__EFMigrationsHistory\"", r => r.GetString(0));
-        Assert.Equal(new[] {"20261114120000_InitialDataModel", "20261117060000_AddJobs"}, applied.OrderBy(x => x, StringComparer.Ordinal));
+        Assert.Equal(new[] {"20261114120000_InitialDataModel", "20261117060000_AddJobs", "20261118040000_AddApplications"}, applied.OrderBy(x => x, StringComparer.Ordinal));
     }
 
     [Fact]
@@ -39,6 +39,28 @@ public class SchemaTests : DatabaseTestBase
 
         string[] expected =
         [
+            "application_audit.Action character varying NO 20",
+            "application_audit.Actor character varying NO 20",
+            "application_audit.ApplicationId uuid NO -",
+            "application_audit.ChangedAtUtc timestamp with time zone NO -",
+            "application_audit.Id uuid NO -",
+            "application_audit.NewAppliedAtUtc timestamp with time zone YES -",
+            "application_audit.NewIsApplied boolean NO -",
+            "application_audit.NewStatus character varying NO 30",
+            "application_audit.OldAppliedAtUtc timestamp with time zone YES -",
+            "application_audit.OldIsApplied boolean YES -",
+            "application_audit.OldStatus character varying YES 30",
+            "application_audit.Reason character varying YES 500",
+            "applications.AppliedAtUtc timestamp with time zone YES -",
+            "applications.AppliedConfirmedAtUtc timestamp with time zone YES -",
+            "applications.CandidateId uuid NO -",
+            "applications.CreatedAtUtc timestamp with time zone NO -",
+            "applications.Id uuid NO -",
+            "applications.IsApplied boolean NO -",
+            "applications.JobId uuid NO -",
+            "applications.Method character varying YES 20",
+            "applications.Status character varying NO 30",
+            "applications.UpdatedAtUtc timestamp with time zone NO -",
             "candidates.Id uuid NO -",
             "candidates.Name character varying NO 200",
             "company_list_employers.CompanyListId uuid NO -",
@@ -102,7 +124,7 @@ public class SchemaTests : DatabaseTestBase
             r => r.GetString(0));
 
         Assert.Equal(
-            new[] {"IX_company_lists_NormalizedName", "IX_employers_NormalizedName", "IX_jobs_EmployerId_NormalizedRequisitionId", "IX_search_profiles_CandidateId_NormalizedName"}
+            new[] {"IX_applications_CandidateId_JobId", "IX_company_lists_NormalizedName", "IX_employers_NormalizedName", "IX_jobs_EmployerId_NormalizedRequisitionId", "IX_search_profiles_CandidateId_NormalizedName"}
                 .OrderBy(x => x, StringComparer.Ordinal),
             unique.OrderBy(x => x, StringComparer.Ordinal));
     }
@@ -117,6 +139,9 @@ public class SchemaTests : DatabaseTestBase
             r => r.GetString(0));
 
         Assert.Equal(new[] {
+                "application_audit -> applications RESTRICT",
+                "applications -> candidates RESTRICT",
+                "applications -> jobs RESTRICT",
                 "company_list_employers -> company_lists CASCADE",
                 "company_list_employers -> employers RESTRICT",
                 "job_status_history -> jobs CASCADE",
@@ -136,6 +161,15 @@ public class SchemaTests : DatabaseTestBase
             r => r.GetString(0));
 
         Assert.Equal(new[] {
+                "CK_application_audit_action_values",
+                "CK_application_audit_actor_values",
+                "CK_application_audit_new_status_values",
+                "CK_application_audit_old_status_values",
+                "CK_application_audit_reason_required",
+                "CK_applications_applied_fact_complete",
+                "CK_applications_method_values",
+                "CK_applications_status_applied_consistent",
+                "CK_applications_status_values",
                 "CK_candidates_name_not_blank",
                 "CK_company_lists_default_work_modes_range",
                 "CK_company_lists_name_not_blank",

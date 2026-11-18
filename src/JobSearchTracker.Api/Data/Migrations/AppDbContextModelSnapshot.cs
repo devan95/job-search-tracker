@@ -21,6 +21,132 @@ namespace JobSearchTracker.Api.Data.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("JobSearchTracker.Api.Data.Application", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("AppliedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("AppliedConfirmedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CandidateId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsApplied")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Method")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CandidateId", "JobId")
+                        .IsUnique();
+
+                    b.HasIndex("JobId");
+
+                    b.ToTable("applications", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_applications_applied_fact_complete", "(\"IsApplied\" AND \"Method\" IS NOT NULL AND \"AppliedAtUtc\" IS NOT NULL AND \"AppliedConfirmedAtUtc\" IS NOT NULL) OR (NOT \"IsApplied\" AND \"Method\" IS NULL AND \"AppliedAtUtc\" IS NULL AND \"AppliedConfirmedAtUtc\" IS NULL)");
+
+                            t.HasCheckConstraint("CK_applications_method_values", "\"Method\" IS NULL OR \"Method\" IN ('manual')");
+
+                            t.HasCheckConstraint("CK_applications_status_applied_consistent", "(\"Status\" NOT IN ('applied', 'interview', 'offer') OR \"IsApplied\") AND (\"Status\" NOT IN ('saved', 'pendingVerification') OR NOT \"IsApplied\")");
+
+                            t.HasCheckConstraint("CK_applications_status_values", "\"Status\" IN ('saved', 'applied', 'pendingVerification', 'interview', 'offer', 'rejected', 'withdrawn')");
+                        });
+                });
+
+            modelBuilder.Entity("JobSearchTracker.Api.Data.ApplicationAuditEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Actor")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("ApplicationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("ChangedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("NewAppliedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("NewIsApplied")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("NewStatus")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<DateTimeOffset?>("OldAppliedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool?>("OldIsApplied")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("OldStatus")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApplicationId", "ChangedAtUtc");
+
+                    b.ToTable("application_audit", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_application_audit_action_values", "\"Action\" IN ('created', 'statusChanged', 'appliedConfirmed', 'unapplied', 'corrected')");
+
+                            t.HasCheckConstraint("CK_application_audit_actor_values", "\"Actor\" IN ('user')");
+
+                            t.HasCheckConstraint("CK_application_audit_new_status_values", "\"NewStatus\" IN ('saved', 'applied', 'pendingVerification', 'interview', 'offer', 'rejected', 'withdrawn')");
+
+                            t.HasCheckConstraint("CK_application_audit_old_status_values", "\"OldStatus\" IS NULL OR \"OldStatus\" IN ('saved', 'applied', 'pendingVerification', 'interview', 'offer', 'rejected', 'withdrawn')");
+
+                            t.HasCheckConstraint("CK_application_audit_reason_required", "\"Action\" NOT IN ('unapplied', 'corrected') OR (\"Reason\" IS NOT NULL AND char_length(btrim(\"Reason\")) > 0)");
+                        });
+                });
+
             modelBuilder.Entity("JobSearchTracker.Api.Data.Candidate", b =>
                 {
                     b.Property<Guid>("Id")
@@ -331,6 +457,36 @@ namespace JobSearchTracker.Api.Data.Migrations
                     b.ToTable("search_profile_company_lists");
                 });
 
+            modelBuilder.Entity("JobSearchTracker.Api.Data.Application", b =>
+                {
+                    b.HasOne("JobSearchTracker.Api.Data.Candidate", "Candidate")
+                        .WithMany()
+                        .HasForeignKey("CandidateId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("JobSearchTracker.Api.Data.Job", "Job")
+                        .WithMany()
+                        .HasForeignKey("JobId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Candidate");
+
+                    b.Navigation("Job");
+                });
+
+            modelBuilder.Entity("JobSearchTracker.Api.Data.ApplicationAuditEntry", b =>
+                {
+                    b.HasOne("JobSearchTracker.Api.Data.Application", "Application")
+                        .WithMany("AuditEntries")
+                        .HasForeignKey("ApplicationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Application");
+                });
+
             modelBuilder.Entity("JobSearchTracker.Api.Data.CompanyListEmployer", b =>
                 {
                     b.HasOne("JobSearchTracker.Api.Data.CompanyList", "CompanyList")
@@ -400,6 +556,11 @@ namespace JobSearchTracker.Api.Data.Migrations
                     b.Navigation("CompanyList");
 
                     b.Navigation("SearchProfile");
+                });
+
+            modelBuilder.Entity("JobSearchTracker.Api.Data.Application", b =>
+                {
+                    b.Navigation("AuditEntries");
                 });
 
             modelBuilder.Entity("JobSearchTracker.Api.Data.Candidate", b =>

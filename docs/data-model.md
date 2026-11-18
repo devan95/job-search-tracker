@@ -107,6 +107,47 @@ id is one job, no override); (`EmployerId`, `NormalizedTitle`); (`CanonicalUrl`)
 job without a requisition id is not constrained. The URL and title + location rules are application-level warnings (OQ-P1.7),
 not unique indexes, because the user may confirm them.
 
+## Applications (Order 7; decisions OQ-P1.8 and OQ-P1.9, answered 2026-11-18)
+
+Order 7 (migration `20261118040000_AddApplications`) adds two tables, so the model has ten tables in total.
+
+| Table | Purpose | Key columns |
+| --- | --- | --- |
+| `applications` | One application per candidate and canonical job (never per source listing). | `Id`, `CandidateId`, `JobId`, `Status`, `IsApplied`, `Method`, `AppliedAtUtc`, `AppliedConfirmedAtUtc` |
+| `application_audit` | Append-only trail: one row per change (who, when, old value, new value, reason). | `Id`, `ApplicationId`, `Action`, `Actor`, `ChangedAtUtc`, `OldStatus`, `OldIsApplied`, `OldAppliedAtUtc`, `NewStatus`, `NewIsApplied`, `NewAppliedAtUtc`, `Reason` |
+
+Delete rules (OQ-P1.6: a job or candidate with an application cannot be hard-deleted):
+
+| Relationship | On delete | Meaning |
+| --- | --- | --- |
+| `candidates` -> `applications` | RESTRICT | A candidate with applications cannot be deleted (API: 409 `candidate_has_applications`). |
+| `jobs` -> `applications` | RESTRICT | A job with an application cannot be deleted (API: 409 `job_in_use`). |
+| `applications` -> `application_audit` | RESTRICT | An application with audit rows cannot be deleted. There is no delete endpoint. |
+
+Uniqueness: the unique index `IX_applications_CandidateId_JobId` is the only application per candidate and job.
+
+| Column | Type | Rule |
+| --- | --- | --- |
+| `Status` | varchar(30) | `saved`, `applied`, `pendingVerification`, `interview`, `offer`, `rejected`, `withdrawn` (check). A new application is `saved` |
+| `IsApplied` | boolean | The confirmed fact that the application was submitted. Only an explicit manual confirmation sets it. Later statuses never clear it; only an audited un-apply does |
+| `Method` | varchar(20), nullable | `manual` (check); always `manual` in Phase 1. Set exactly when `IsApplied` |
+| `AppliedAtUtc` | timestamptz, nullable | When the user says they applied. Back-dating is allowed; the API rejects a future time. Set exactly when `IsApplied` |
+| `AppliedConfirmedAtUtc` | timestamptz, nullable | When the user confirmed it in this tool, stored separately from `AppliedAtUtc`. Set exactly when `IsApplied` |
+| `CreatedAtUtc`, `UpdatedAtUtc` | timestamptz | Set by the system |
+
+Check constraints keep the data honest even without the API: `CK_applications_applied_fact_complete` (flag, method and both
+times are all set or all null), `CK_applications_status_applied_consistent` (`applied`, `interview` and `offer` require
+`IsApplied`; `saved` and `pendingVerification` forbid it; `rejected` and `withdrawn` allow either), `CK_applications_status_values`
+and `CK_applications_method_values`. `applications` uses `xmin` as its optimistic concurrency token like `jobs`.
+
+Audit rows: `Action` is `created`, `statusChanged`, `appliedConfirmed`, `unapplied` or `corrected`; `Actor` is `user` (there is no
+authentication in Phase 1). `CK_application_audit_reason_required` makes `unapplied` and `corrected` rows carry a non-blank
+reason. The first (`created`) row has no old values. A database trigger (`trg_application_audit_append_only`, created in the
+migration and not part of the EF model) rejects every UPDATE and DELETE of an audit row with SQLSTATE 23000.
+
+Job status never changes an application (OQ-P1.5). The `applied` status and the `IsApplied` fact are separate: an application
+that is `rejected`, `withdrawn`, `interview` or `offer` keeps `IsApplied`, `Method` and `AppliedAtUtc`.
+
 ## Deferred requirements (AC7)
 
 Not in this model: location sets, role lists and aliases, employer website/career URL/ATS, source catalog and per-source enablement, automatic `ProfileVersion` increment. Their owner and phase are on the Notion Task Board and Product Requirements; the API is in [api.md](api.md).

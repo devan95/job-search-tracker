@@ -67,7 +67,7 @@ docker compose run --rm migrate
 docker compose exec db psql -U jobsearch -d jobsearch -c "\dt"
 ```
 
-- Fresh database: creates the six tables and `__EFMigrationsHistory`.
+- Fresh database: creates the ten tables and `__EFMigrationsHistory`.
 - Existing database already at the current migration: nothing to apply; data is untouched.
 - Existing database behind the latest migration: applies only the missing migrations, in order.
 - Running `migrate` again is always safe (idempotent). A failed migration exits non-zero; read the log before retrying.
@@ -93,7 +93,7 @@ docker compose run --rm migrate
 docker compose down -v
 ```
 
-Expected: the first `migrate` applies `InitialDataModel`, `\dt` lists six tables plus `__EFMigrationsHistory`, and the second
+Expected: the first `migrate` applies `InitialDataModel`, `AddJobs` and `AddApplications`, `\dt` lists ten tables plus `__EFMigrationsHistory`, and the second
 `migrate` applies nothing. `down -v` is safe here only because `COMPOSE_PROJECT_NAME` is `jst_verify` (check the `echo` line first).
 Close the CMD window afterwards so the variables do not leak into normal use.
 

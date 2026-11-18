@@ -4,7 +4,7 @@ namespace JobSearchTracker.Api.Data;
 
 /// <summary>
 /// EF Core context for the Phase 1 data model: candidates, employers, company lists, search profiles, the
-/// two join tables, canonical jobs and their status history. See docs/data-model.md for the decisions behind it.
+/// two join tables, canonical jobs and their status history, applications and their audit trail. See docs/data-model.md for the decisions behind it.
 /// </summary>
 public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
@@ -16,6 +16,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<SearchProfileCompanyList> SearchProfileCompanyLists => Set<SearchProfileCompanyList>();
     public DbSet<Job> Jobs => Set<Job>();
     public DbSet<JobStatusHistory> JobStatusHistories => Set<JobStatusHistory>();
+    public DbSet<Application> Applications => Set<Application>();
+    public DbSet<ApplicationAuditEntry> ApplicationAuditEntries => Set<ApplicationAuditEntry>();
 
     private static string InList(IEnumerable<string> values) => string.Join(", ", values.Select(v => $"'{v}'"));
 
@@ -139,6 +141,59 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             b.HasOne(x => x.Job).WithMany(x => x.StatusHistory)
                 .HasForeignKey(x => x.JobId).OnDelete(DeleteBehavior.Cascade).IsRequired();
             b.HasIndex(x => new { x.JobId, x.ChangedAtUtc });
+        });
+
+        modelBuilder.Entity<Application>(b =>
+        {
+            b.ToTable("applications", t =>
+            {
+                t.HasCheckConstraint("CK_applications_status_values", $"\"Status\" IN ({InList(ApplicationStatuses.All)})");
+                t.HasCheckConstraint("CK_applications_method_values", $"\"Method\" IS NULL OR \"Method\" IN ({InList(ApplicationMethods.All)})");
+                // The applied fact is complete or absent: flag, method, time applied and time confirmed go together.
+                t.HasCheckConstraint("CK_applications_applied_fact_complete",
+                    "(\"IsApplied\" AND \"Method\" IS NOT NULL AND \"AppliedAtUtc\" IS NOT NULL AND \"AppliedConfirmedAtUtc\" IS NOT NULL) " +
+                    "OR (NOT \"IsApplied\" AND \"Method\" IS NULL AND \"AppliedAtUtc\" IS NULL AND \"AppliedConfirmedAtUtc\" IS NULL)");
+                // Saved and pending verification are never applied; applied, interview and offer always are.
+                t.HasCheckConstraint("CK_applications_status_applied_consistent",
+                    $"(\"Status\" NOT IN ({InList(ApplicationStatuses.RequireApplied)}) OR \"IsApplied\") " +
+                    $"AND (\"Status\" NOT IN ({InList(ApplicationStatuses.RequireNotApplied)}) OR NOT \"IsApplied\")");
+            });
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Status).IsRequired().HasMaxLength(30);
+            b.Property(x => x.Method).HasMaxLength(20);
+            // Same optimistic concurrency token as jobs: two concurrent changes to one application cannot both be saved.
+            b.Property<uint>("xmin").HasColumnName("xmin").HasColumnType("xid")
+                .ValueGeneratedOnAddOrUpdate().IsConcurrencyToken();
+            // RESTRICT: a candidate or job that has an application cannot be hard-deleted (OQ-P1.6).
+            b.HasOne(x => x.Candidate).WithMany()
+                .HasForeignKey(x => x.CandidateId).OnDelete(DeleteBehavior.Restrict).IsRequired();
+            b.HasOne(x => x.Job).WithMany()
+                .HasForeignKey(x => x.JobId).OnDelete(DeleteBehavior.Restrict).IsRequired();
+            // One application per candidate and canonical job, whatever source the job was discovered through.
+            b.HasIndex(x => new { x.CandidateId, x.JobId }).IsUnique();
+        });
+
+        modelBuilder.Entity<ApplicationAuditEntry>(b =>
+        {
+            b.ToTable("application_audit", t =>
+            {
+                t.HasCheckConstraint("CK_application_audit_action_values", $"\"Action\" IN ({InList(ApplicationAuditActions.All)})");
+                t.HasCheckConstraint("CK_application_audit_actor_values", $"\"Actor\" IN ({InList(ApplicationActors.All)})");
+                t.HasCheckConstraint("CK_application_audit_new_status_values", $"\"NewStatus\" IN ({InList(ApplicationStatuses.All)})");
+                t.HasCheckConstraint("CK_application_audit_old_status_values", $"\"OldStatus\" IS NULL OR \"OldStatus\" IN ({InList(ApplicationStatuses.All)})");
+                t.HasCheckConstraint("CK_application_audit_reason_required",
+                    $"\"Action\" NOT IN ({InList(ApplicationAuditActions.RequireReason)}) OR (\"Reason\" IS NOT NULL AND char_length(btrim(\"Reason\")) > 0)");
+            });
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Action).IsRequired().HasMaxLength(20);
+            b.Property(x => x.Actor).IsRequired().HasMaxLength(20);
+            b.Property(x => x.OldStatus).HasMaxLength(30);
+            b.Property(x => x.NewStatus).IsRequired().HasMaxLength(30);
+            b.Property(x => x.Reason).HasMaxLength(ApplicationLimits.Reason);
+            // Audit rows are append-only; a migration trigger rejects UPDATE and DELETE. RESTRICT keeps the trail with its application.
+            b.HasOne(x => x.Application).WithMany(x => x.AuditEntries)
+                .HasForeignKey(x => x.ApplicationId).OnDelete(DeleteBehavior.Restrict).IsRequired();
+            b.HasIndex(x => new { x.ApplicationId, x.ChangedAtUtc });
         });
     }
 }
