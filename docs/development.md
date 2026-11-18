@@ -164,6 +164,9 @@ npm run install-browsers
 npm test
 ```
 
+On Linux, use `npm run install-browsers -- --with-deps` instead (as CI does). It also installs Chromium's system
+libraries and needs `sudo`; without them the smoke test cannot launch the browser.
+
 Set `E2E_WEB_URL` (default `http://127.0.0.1:5173`) or `E2E_API_URL` (default `http://127.0.0.1:5080`) to point at another
 instance. `E2E_API_URL` is also passed to the Vite server that Playwright starts as `API_PROXY_TARGET`, so the browser tests
 and the direct health test use the same API. If you already run `npm run dev` yourself, start it with the same
