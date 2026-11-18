@@ -239,7 +239,7 @@ artifact on failure. `e2e/` is excluded from SonarQube coverage (it contains tes
 
 ## Code base for an AI session
 
-The repository is public. Every AI session (accounts AC1 to AC5) takes the latest `main` itself: a shallow clone
+The repository is public. Every AI session (accounts AC1 to AC6) takes the latest `main` itself: a shallow clone
 (`git clone --depth 1 https://github.com/devan95/job-search-tracker`), or single files from
 `raw.githubusercontent.com/devan95/job-search-tracker/main/<path>`, and records the commit id as its base. No archive of
 the repository needs to be attached. The session never commits or pushes; it delivers changed files (see below).
@@ -276,21 +276,73 @@ For an update to an existing PR, the package contains:
 
 Extract the ZIP outside the repository clone and double-click the root-level `run-delivery.cmd`. It auto-detects its own
 package folder. No manual copy from the clone and no separate runner path are needed. The runner checks Git and authenticated
-GitHub CLI, validates the manifest, all paths and the packaged launcher, and rejects extra files. It stops, without changing
-anything, when the manifest/path is invalid or unsafe, the working tree is dirty, the current branch cannot be left safely,
-local `main` is ahead of or diverged from `origin/main`, the base SHA is stale, or the target branch already exists.
-Otherwise it fetches `origin`, switches to `main` (fast-forward only), creates the branch, applies and stages only the
-manifest-listed paths, verifies the resulting change set, commits, pushes and opens the PR (new mode) or updates the existing
-PR branch (update mode). It never force-pushes or merges. A failure before commit rolls back the files/branch safely.
+GitHub CLI and validates the manifest, package paths and launcher before touching the clone. Package-validation and dirty-tree
+failures occur before fetch and leave the clone unchanged. The runner then fetches `origin`; that can update remote-tracking
+refs even when it later refuses to leave the current branch. If the current branch has unpushed commits or cannot safely be
+left, the runner stops after fetch without switching the checked-out branch or changing the working tree.
+
+After that check, the runner switches to the target branch (`main` for new mode or the existing PR branch for update mode)
+and may fast-forward it. The exact `baseCommit` check happens **after** this synchronization. A
+stale base can therefore be rejected after the clone has already fetched, switched branches or fast-forwarded; the runner
+does not undo those synchronization steps. A failure while applying files after the delivery branch is selected triggers a
+rollback attempt. The runner checks each rollback command and reports completion only when reset/cleanup and (for new mode)
+branch removal succeed. If it reports an incomplete rollback, inspect `git status` and restore the clone before retrying.
+
+A tracked file that the delivery deletes may be replaced by a directory of the same name (for example `config` becomes
+`config/settings.json`): deletions are validated first, and rollback tolerates the absent child. Destination inspection
+errors (for example permission problems) are reported with the failing path component and stop the run.
+
+Once the manifest-listed changes are applied, the runner verifies the resulting change set, commits, pushes and opens the PR
+(new mode) or updates the existing PR branch (update mode). It never force-pushes or merges. The branch-tip and post-commit
+push-recovery behavior is described below.
 
 ### Update mode: fixing review comments on an open pull request
 
 When a pull request needs changes (for example after review comments), the delivery does not create a second branch or PR.
-Its `delivery-manifest.json` has `"mode": "update"`; `branch` is the existing PR branch and `baseCommit` is the exact
-commit at the tip of that branch that the delivery was built on. The package includes only `delivery-manifest.json`,
-`commit.txt`, the changed files and root-level `run-delivery.cmd`. The runner checks that the remote branch exists and
-that its tip still equals `baseCommit`; otherwise it stops and asks for a rebuilt delivery. On success it applies only the
-manifest-listed files, commits and pushes without force; the existing PR updates automatically.
+Its `delivery-manifest.json` has `"mode": "update"`; `branch` is the existing PR branch (it keeps its own safe name, for
+example `chore/<name>`; only new-mode branches must be `ac1`–`ac6/<task>`) and `baseCommit` is the exact
+tip of the PR branch when the delivery was prepared. The package includes `delivery-manifest.json`, `commit.txt`, the
+changed files and root-level `run-delivery.cmd`. After `git fetch origin`, the runner compares the local PR branch with
+the fetched `origin/<branch>` snapshot and fast-forwards when needed, then requires local `HEAD` to equal `baseCommit`.
+The runner also compares the live exact remote ref to `baseCommit` before applying files. The update push sends the commit ID captured right after `git commit` (its parent must be `baseCommit`), not the mutable
+local branch name, and uses `--force-with-lease=refs/heads/<branch>:<baseCommit>`: it only publishes the intended descendant when the remote ref
+still exists at that exact base. If another push moves the ref or the ref is deleted before the update push, the lease
+fails rather than overwriting or recreating the PR branch. This is still a point-in-time protocol; a changed ref must
+be inspected and the delivery rebuilt. The runner never force-pushes to a different tip. On success the existing PR
+updates automatically.
+
+### Recovering when a push fails after a commit
+
+A failed push after `git commit` leaves the completed delivery commit on the local branch; the runner deliberately does not
+roll it back. **Do not rerun the same ZIP**: the existing local branch causes new-mode preflight to stop, and update mode
+must not duplicate the commit. Keep the extracted package and clone, then inspect the current branch, `git status` and
+`git log -1 --oneline` to verify the retained delivery commit. Run `git fetch origin` and query the **exact** ref:
+`git ls-remote --exit-code --heads origin refs/heads/<branch>`. Verify that the returned second column is exactly
+`refs/heads/<branch>`; a similarly prefixed ref such as `refs/heads/archive/ac1/task` is not the target branch.
+Exit code 2 means no matching ref; any other non-zero exit code is a query failure and must stop recovery.
+- If the exact remote branch is absent, and the local branch is clean and the retained commit is the intended delivery,
+  retry with `git push -u --force-with-lease=refs/heads/<branch>: origin <branch>`. The empty expected value makes the
+  push create the branch only if the remote ref is still absent.
+- If the exact remote branch already points to the retained delivery commit, the push may have succeeded despite a lost
+  response; do not push again. Continue with the PR step below.
+- If the exact remote branch still points to `baseCommit` and the local branch is clean, first record the delivery
+  commit with `git rev-parse --verify HEAD` as `<commitId>`. Then require that it is the **only** commit after
+  `baseCommit` (`git rev-list --count <baseCommit>..<commitId>` returns `1` and
+  `git merge-base --is-ancestor <baseCommit> <commitId>` succeeds), run against `<commitId>` and not against `HEAD`, and
+  retry with
+  `git push --force-with-lease=refs/heads/<branch>:<baseCommit> origin <commitId>:refs/heads/<branch>`, pushing exactly
+  the commit those checks inspected; never push the mutable
+  branch name. The ancestry and one-commit checks ensure the update is a fast-forward from `baseCommit`. The explicit expected-tip lease makes the retry fail if
+  the remote ref was deleted or moved after inspection, rather than unintentionally recreating or replacing it. Do not
+  use a plain push for this race-sensitive retry.
+- If the exact remote branch exists at any other commit, stop and compare the histories. Do not force-push; reconcile the
+  remote work or request a rebuilt delivery.
+
+After a successful push in new mode, create the PR if the runner did not:
+`gh pr create --base main --head <branch> --title "<PR title>" --body-file "<extracted-package>\\pr.txt"`.
+Use the title from the package's `pr-title.txt`. In update mode the existing PR receives the pushed commit automatically;
+do not create another PR. If the push did not complete a commit (or the runner rolled back before committing), fix the
+reported pre-commit cause and rebuild/re-run the delivery rather than manually copying files.
 
 ### PR review comment replies and resolution
 
@@ -298,8 +350,9 @@ For inline review threads, reply on the original thread after the fix is pushed 
 change is fully addressed and verified (or the thread is genuinely obsolete/no longer actionable and the reply explains why).
 For partial fixes, failed checks, unresolved questions or blockers, reply with what remains and leave the thread open.
 Use the authenticated GitHub CLI to inspect the review thread, reply to its root comment, and resolve by GraphQL thread ID;
-the exact commands and evidence rules are in [the Agent Operating Model](agent-operating-model.md#5-pr-review-comments-reply-then-resolve-or-keep-open).
+the exact commands and evidence rules are in [the Agent Operating Model](agent-operating-model.md#5-review-comment-handling-reply-then-resolve-or-leave-open).
 Never mark a thread resolved just because a reply was posted.
 The clone path defaults to `C:\Users\Devan Shah\Repo\job-search-tracker`. When that path is not a clone the script asks once and
 saves the answer in `%LOCALAPPDATA%\job-search-tracker-delivery.json` (local only, never committed). The `JOBSEARCH_REPO`
-environment variable overrides it. If the script stops, do not copy files by hand: fix the cause and run it again.
+environment variable overrides it. Follow the recovery section above when a stop happens after a commit; only pre-commit
+failures that leave the clone restored should be fixed and re-run from the same ZIP.

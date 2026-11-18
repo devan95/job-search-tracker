@@ -41,7 +41,7 @@ Every implementation delivery ZIP must work after extraction without copying a h
 
 **Existing PR update mode** contains changed/added files at exact repository paths, `delivery-manifest.json`, `commit.txt`, and the same root-level `run-delivery.cmd`. Update mode uses `"mode": "update"`, the existing PR branch and its exact current tip SHA as `baseCommit`; it does not contain `pr.txt` or `pr-title.txt` and does not create a second PR.
 
-The root `run-delivery.cmd` is a package helper, not a manifest entry and not a file copied/staged into the repository. If the task changes `tools/delivery/run-delivery.cmd`, include the changed repo file at that path as a manifest-listed file and also include that same updated script as the root launcher.
+The root `run-delivery.cmd` and the required delivery metadata are package helpers and explicit exceptions to the changed-files-only rule: include them even when unchanged. They are not repository changes, must never appear in `manifest.files` or `manifest.deleted`, and must not be copied/staged into the clone. The runner rejects the reserved package-root path `run-delivery.cmd` in either manifest list. If the task changes `tools/delivery/run-delivery.cmd`, include the changed repo file at that path as a manifest-listed file and also include that same updated script as the root launcher.
 
 Do not include extra files, `.git/`, secrets, real `.env` files, credentials, candidate data, local databases, logs, caches, dependencies or build output. The runner rejects unexpected files and unsafe paths.
 
@@ -53,36 +53,55 @@ The final delivery message names the base commit, branch, exact checks/results a
 
 For each relevant inline review thread, read the full discussion and record its GraphQL thread ID, root inline-comment database ID, author, path/line and requested change. Classify it as fully addressed, partially addressed, not addressed, blocked/needs a decision, or obsolete/no action required.
 
-Implement the fix on the existing PR branch using update-mode delivery. Run the relevant tests and inspect the final diff. Only after the corrected commit is pushed and the current PR head is verified:
-- Reply on the original inline thread with what changed, where, and the commit/test evidence.
-- Resolve the thread only when the request is fully addressed and verified, or the thread is genuinely obsolete/non-actionable and the reply explains why.
-- For partial fixes, failed checks, open decisions or blockers, reply with what remains and leave the thread open.
+Implement code fixes on the existing PR branch using update-mode delivery. Run the relevant tests and inspect the final diff. The push-and-head-verification gate applies to resolving a thread, not to posting a useful reply:
+- Reply on the original inline thread whenever there is a meaningful update. For a verified fix, state what changed, where, and the pushed commit/test evidence; when the PR is already merged, link the follow-up PR and its head commit.
+- For a blocked or unanswered decision, a finding not yet addressed, a failed check, or a partial fix, reply without requiring a corrected commit. State the blocker, remaining work or exact decision needed, and leave the thread open.
+- For a genuinely obsolete/non-actionable thread, explain why in a reply; resolve it only when that conclusion is verified.
+- Resolve only when the request is fully addressed and verified, or is genuinely obsolete/non-actionable with an explanation. Do not resolve an unaddressed request merely because a reply was posted.
 - Re-fetch the thread after the action and report Resolved or Open. A reply does not automatically resolve a thread; never resolve just to clear the review queue.
 
 Use authenticated GitHub CLI on the user's authorized environment. Never claim a reply or resolution succeeded unless `gh` confirms it. If authenticated access is unavailable, prepare the exact reply/commands, report the action as NOT RUN, and leave the thread open.
 
-### Inspect review threads
+### Inspect every review thread and every comment
 
-Replace OWNER, REPO and PR_NUMBER:
+Replace OWNER, REPO and PR_NUMBER. Paginate the top-level thread connection until `hasNextPage` is false; pass the previous page's `endCursor` as `cursor` on each subsequent request:
 
 ```bash
 gh api graphql -F owner=OWNER -F name=REPO -F number=PR_NUMBER -f query='
-query($owner: String!, $name: String!, $number: Int!) {
+query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
-      reviewThreads(first: 100) {
-        nodes { id isResolved isOutdated comments(first: 100) {
-          nodes { databaseId author { login } body path line originalLine url }
-        } }
+      reviewThreads(first: 100, after: $cursor) {
+        nodes { id isResolved isOutdated }
+        pageInfo { hasNextPage endCursor }
       }
     }
   }
 }'
 ```
 
+Then, for **each** returned thread ID, paginate that thread's comments independently until its `hasNextPage` is false. Keep a separate cursor for every thread:
+
+```bash
+gh api graphql -F threadId=THREAD_NODE_ID -f query='
+query($threadId: ID!, $cursor: String) {
+  node(id: $threadId) {
+    ... on PullRequestReviewThread {
+      id
+      comments(first: 100, after: $cursor) {
+        nodes { fullDatabaseId replyTo { fullDatabaseId } author { login } body path line originalLine url }
+        pageInfo { hasNextPage endCursor }
+      }
+    }
+  }
+}'
+```
+
+For each page after the first, add `-F cursor=END_CURSOR_FROM_PREVIOUS_PAGE`. Do not assume the first 100 threads or comments are the complete review.
+
 ### Reply to the root inline comment
 
-Use the `databaseId` of the root comment, not a reply:
+Use the `fullDatabaseId` decimal value of the root comment, not a reply. In the paginated comment query, the root is the comment whose `replyTo` is `null`; a reply has a non-null `replyTo`. Select it by this field, never by assuming the first returned comment is the root. Preserve the full decimal ID exactly; do not narrow it to a 32-bit integer:
 
 ```bash
 gh api repos/OWNER/REPO/pulls/PR_NUMBER/comments/COMMENT_ID/replies --method POST -f body="Fixed in COMMIT_SHA: describe the change and passing checks."

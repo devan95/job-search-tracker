@@ -19,6 +19,9 @@ $script:branchCreated = $false   # true once the script has started changing the
 $script:committed = $false
 $script:updateMode = $false
 $script:manifest = $null
+$script:createdPaths = @()
+$script:deletedPaths = @()       # manifest deletions; a deleted file may become a directory
+$script:destinationReason = ''  # why the last Test-SafeDestinationPath call refused a path
 $DefaultRepo = 'C:\Users\Devan Shah\Repo\job-search-tracker'
 
 function Fail([string]$m) {
@@ -30,24 +33,76 @@ function Fail([string]$m) {
 
 function Rollback {
     # Only reached before the commit, on a tree that was clean when the script started.
+    $rollbackFailures = @()
+    $rollbackComplete = $true
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
     try {
         Set-Location -LiteralPath $script:repo
-        $ErrorActionPreference = 'Continue'
         & git reset --hard HEAD *> $null
-        $own = @($script:manifest.files)
-        if ($own.Count -gt 0) { & git clean -fdq -- @own *> $null }
-        if ($script:updateMode) {
-            # The branch already existed and was pushed: keep it, only undo the uncommitted changes.
-            Write-Host "Rolled back: working tree on $($script:manifest.branch) restored to its last commit." -ForegroundColor Yellow
-        } else {
+        if ($LASTEXITCODE -ne 0) {
+            $rollbackFailures += 'git reset --hard HEAD'
+            $rollbackComplete = $false
+        }
+        # Remove only files created by this run. Exact-path removal handles Git-ignored files;
+        # never use git clean -x because that could remove pre-existing ignored data.
+        foreach ($p in $script:createdPaths) {
+            $createdPath = Join-Path $script:repo ($p -replace '/', '\')
+            try {
+                if (-not (Test-SafeDestinationPath $p $script:deletedPaths)) {
+                    throw "Destination check failed: $($script:destinationReason). Refusing to remove through it."
+                }
+                # Remove only after a successful index query confirms the path is untracked. After the reset a tracked
+                # path was added by another commit and is not a file this run created; a failed query proves nothing.
+                $indexState = Get-ExactTrackedIndexState $p
+                if ($indexState -eq 'tracked') {
+                    throw "Path is tracked after reset; it was not created by this run. Not removing."
+                }
+                if ($indexState -ne 'untracked') {
+                    throw "Could not confirm that the path is untracked (index check: $indexState). Not removing."
+                }
+                if (Test-Path -LiteralPath $createdPath) {
+                    Remove-Item -LiteralPath $createdPath -Force -ErrorAction Stop
+                }
+                if (Test-Path -LiteralPath $createdPath) {
+                    throw "Created file remains after removal."
+                }
+            } catch {
+                $rollbackFailures += "remove created file $p"
+                $rollbackComplete = $false
+                Write-Host "Could not safely remove delivery-created file: $createdPath ($($_.Exception.Message))" -ForegroundColor Yellow
+            }
+        }
+        if ($rollbackComplete -and -not $script:updateMode) {
             & git switch main *> $null
-            & git branch -D $script:manifest.branch *> $null
-            Write-Host "Rolled back: branch $($script:manifest.branch) removed, working tree restored." -ForegroundColor Yellow
+            if ($LASTEXITCODE -ne 0) {
+                $rollbackFailures += 'git switch main'
+                $rollbackComplete = $false
+            } else {
+                & git branch -D $script:manifest.branch *> $null
+                if ($LASTEXITCODE -ne 0) {
+                    $rollbackFailures += "git branch -D $($script:manifest.branch)"
+                    $rollbackComplete = $false
+                }
+            }
+        }
+        if ($rollbackComplete) {
+            if ($script:updateMode) {
+                Write-Host "Rollback completed: working tree on $($script:manifest.branch) restored to its last commit." -ForegroundColor Yellow
+            } else {
+                Write-Host "Rollback completed: branch $($script:manifest.branch) removed, working tree restored." -ForegroundColor Yellow
+            }
+        } else {
+            Write-Host "Rollback incomplete (failed: $($rollbackFailures -join '; ')). Check 'git status' in $($script:repo) before retrying." -ForegroundColor Yellow
+            & git status --short
         }
     } catch {
-        Write-Host "Rollback incomplete; check 'git status' in $($script:repo)." -ForegroundColor Yellow
+        Write-Host "Rollback incomplete: $($_.Exception.Message). Check 'git status' in $($script:repo) before retrying." -ForegroundColor Yellow
+        & git status --short
+    } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+        $script:branchCreated = $false
     }
-    $script:branchCreated = $false
 }
 
 # Runs git, stops the whole script on a non-zero exit code.
@@ -66,6 +121,45 @@ function Git-Try([string[]]$GitArgs) {
     return $out
 }
 
+# Three-state index lookup for an exact repository path:
+#   'tracked'   - the exact path is in the index
+#   'untracked' - the query succeeded and the index has no entry at or under the path
+#   'error'     - the query itself failed (never treat this as 'untracked')
+#   'other'     - the query matched something that is not exactly this path
+function Get-ExactTrackedIndexState([string]$p) {
+    $entries = Git-Try @('-c', 'core.quotepath=false', '--literal-pathspecs', 'ls-files', '--', $p)
+    if ($script:rc -ne 0) { return 'error' }
+    $normalized = @($entries | ForEach-Object { ([string]$_) -replace '\\', '/' } | Where-Object { $_ -ne '' })
+    if ($normalized.Count -eq 0) { return 'untracked' }
+    if ($normalized.Count -eq 1 -and $normalized[0] -ceq $p) { return 'tracked' }
+    return 'other'
+}
+
+# Returns true only when the exact repository path is present in the Git index.
+function Test-ExactTrackedIndexPath([string]$p) {
+    return ((Get-ExactTrackedIndexState $p) -eq 'tracked')
+}
+
+# Returns the SHA only when the exact remote branch ref exists. A failed query is not "branch absent".
+function Get-RemoteBranchSha([string]$Branch) {
+    $expectedRef = "refs/heads/$Branch"
+    $rows = Git-Try @('ls-remote', '--exit-code', '--heads', 'origin', $expectedRef)
+    if ($script:rc -eq 2) { return $null }
+    if ($script:rc -ne 0) {
+        Fail "Could not query remote ref $expectedRef (git ls-remote exit $script:rc)."
+    }
+    $matches = @()
+    foreach ($row in $rows) {
+        $parts = ([string]$row).Trim() -split '\s+'
+        if ($parts.Count -eq 2 -and $parts[1] -ceq $expectedRef) {
+            $matches += $parts[0]
+        }
+    }
+    if ($matches.Count -gt 1) { Fail "Remote query returned more than one exact result for $expectedRef." }
+    if ($matches.Count -eq 1) { return [string]$matches[0] }
+    return $null
+}
+
 function Test-SafePath([string]$p) {
     if ([string]::IsNullOrWhiteSpace($p)) { return $false }
     if ($p -match '^[\\/]' -or $p.Contains(':')) { return $false }
@@ -74,6 +168,41 @@ function Test-SafePath([string]$p) {
         # Windows drops trailing dots and spaces and accepts 8.3 short names, so compare the normalized segment.
         $norm = $seg.TrimEnd('. ').ToLowerInvariant()
         if ($norm -eq '' -or $norm -eq '.git' -or $norm -match '^git~\d+$') { return $false }
+    }
+    return $true
+}
+
+# Reject any existing reparse point (junction/symlink) in the repo-relative destination path, and any existing
+# file where a directory is needed. $DeletedFileAncestors lists tracked files the delivery deletes first, so a
+# file that is replaced by a directory is allowed. Sets $script:destinationReason when it returns $false.
+function Test-SafeDestinationPath([string]$p, [string[]]$DeletedFileAncestors = @()) {
+    $script:destinationReason = ''
+    if (-not (Test-SafePath $p)) { $script:destinationReason = 'the path fails the safe-path rules'; return $false }
+    $segments = $p -split '/'
+    $current = $script:repo
+    for ($i = 0; $i -lt $segments.Count; $i++) {
+        $current = Join-Path $current $segments[$i]
+        $relative = ($segments[0..$i] -join '/')
+        try {
+            $item = Get-Item -LiteralPath $current -Force -ErrorAction Stop
+        } catch {
+            # Only a genuinely absent path component permits stopping. Inspection errors fail closed and are reported as such.
+            if ($_.CategoryInfo.Category -eq [Management.Automation.ErrorCategory]::ObjectNotFound) {
+                break
+            }
+            $script:destinationReason = "could not inspect '$relative': $($_.Exception.Message)"
+            return $false
+        }
+        if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            $script:destinationReason = "'$relative' is a junction or symbolic link"
+            return $false
+        }
+        if ($i -lt ($segments.Count - 1) -and -not $item.PSIsContainer) {
+            # Nothing can exist beneath a file, so a file that the delivery deletes may be replaced by a directory.
+            if ($DeletedFileAncestors -contains $relative) { break }
+            $script:destinationReason = "'$relative' is a file, not a directory"
+            return $false
+        }
     }
     return $true
 }
@@ -133,24 +262,62 @@ foreach ($f in $required) {
     if ([string]::IsNullOrWhiteSpace($manifest.$f)) { Fail "Manifest field '$f' is missing." }
 }
 if ($manifest.baseCommit -notmatch '^[0-9a-f]{40}$') { Fail "Manifest baseCommit is not a full 40-character SHA." }
-if ($manifest.branch -notmatch '^ac[1-6]/[a-z0-9][a-z0-9-]*$') { Fail "Branch '$($manifest.branch)' does not match ac1..ac6/<short-task-name>." }
+if ($script:updateMode) {
+    # An existing PR branch keeps its own name (for example chore/<name>); it must still be a plain, safe ref name.
+    if ($manifest.branch -cnotmatch '^[A-Za-z0-9][A-Za-z0-9._/-]*$' -or $manifest.branch -cmatch '\.\.|//|/$|\.lock$|\.$') { Fail "Branch '$($manifest.branch)' is not a safe existing PR branch name." }
+} elseif ($manifest.branch -notmatch '^ac[1-6]/[a-z0-9][a-z0-9-]*$') { Fail "Branch '$($manifest.branch)' does not match ac1..ac6/<short-task-name>." }
 # One path form (forward slashes) for every later comparison.
 $files = @($manifest.files | ForEach-Object { "$_" -replace '\\', '/' })
 $deleted = @($manifest.deleted | ForEach-Object { "$_" -replace '\\', '/' })
+$script:deletedPaths = $deleted
 if ($files.Count + $deleted.Count -eq 0) { Fail "Manifest lists no files." }
 foreach ($p in ($files + $deleted)) {
     if (-not (Test-SafePath $p)) { Fail "Unsafe path in manifest: '$p'." }
+}
+$helpers = @('delivery-manifest.json', 'commit.txt', 'run-delivery.cmd')
+if (-not $script:updateMode) { $helpers += @('pr-title.txt', 'pr.txt') }
+# Reserved names: every package helper of either mode. A root-level pr.txt or pr-title.txt must never
+# be staged into the clone, not even in update mode where those two files are not required.
+$reservedHelpers = @('delivery-manifest.json', 'commit.txt', 'run-delivery.cmd', 'pr-title.txt', 'pr.txt')
+
+# Package helpers are ZIP metadata/launcher files, never repository manifest paths.
+$helperInManifest = @($files + $deleted | Where-Object {
+    $candidate = ([string]$_).TrimEnd([char[]]@('.', ' '))
+    ($candidate.IndexOf('/') -lt 0) -and ($reservedHelpers -contains $candidate)
+})
+if ($helperInManifest.Count -gt 0) {
+    Fail "Package helper(s) must not appear in manifest.files or manifest.deleted: $($helperInManifest -join ', ')"
+}
+
+foreach ($h in $helpers) {
+    if (-not (Test-Path -LiteralPath (Join-Path $pkg $h))) { Fail "Delivery file missing: $h" }
+}
+# Reject short-name aliases that resolve to a package helper as well as the long filename.
+$packageHelperNames = @{}
+foreach ($h in $reservedHelpers) {
+    $helperPath = Join-Path $pkg $h
+    if (Test-Path -LiteralPath $helperPath -PathType Leaf) {
+        $helperItem = Get-Item -LiteralPath $helperPath -Force
+        $packageHelperNames[$helperItem.Name.ToLowerInvariant()] = $true
+    }
+}
+foreach ($p in ($files + $deleted)) {
+    $candidatePath = Join-Path $pkg ($p -replace '/', '\')
+    if (Test-Path -LiteralPath $candidatePath -PathType Leaf) {
+        $candidateItem = Get-Item -LiteralPath $candidatePath -Force
+        $isPackageRoot = [string]::Equals($candidateItem.DirectoryName, $pkg, [StringComparison]::OrdinalIgnoreCase)
+        $resolvesToHelper = $packageHelperNames.ContainsKey($candidateItem.Name.ToLowerInvariant())
+        $looksLikeLauncherAlias = ($p -notmatch '/') -and ([string]$p -match '(?i)^RUN(?:-?DE)?~[0-9]+\.CMD$')
+        if ($isPackageRoot -and ($resolvesToHelper -or $looksLikeLauncherAlias)) {
+            Fail "Manifest path '$p' resolves to a reserved package helper. Package helpers must not be copied or staged into the clone."
+        }
+    }
 }
 foreach ($p in $files) {
     if ($deleted -contains $p) { Fail "Path is listed as both changed and deleted: $p" }
 }
 foreach ($p in $files) {
     if (-not (Test-Path -LiteralPath (Join-Path $pkg ($p -replace '/', '\')) -PathType Leaf)) { Fail "Listed file is missing from the delivery folder: $p" }
-}
-$helpers = @('delivery-manifest.json', 'commit.txt', 'run-delivery.cmd')
-if (-not $script:updateMode) { $helpers += @('pr-title.txt', 'pr.txt') }
-foreach ($h in $helpers) {
-    if (-not (Test-Path -LiteralPath (Join-Path $pkg $h))) { Fail "Delivery file missing: $h" }
 }
 $allowed = @{}
 foreach ($p in $files) { $allowed[(($p -replace '/', '\').ToLowerInvariant())] = $true }
@@ -208,8 +375,8 @@ if ($current -ne $target) {
 }
 if ($script:updateMode) {
     # Update mode: check out the existing, already pushed PR branch and bring it level with origin (fast-forward only).
-    $null = Git-Try @('ls-remote', '--exit-code', '--heads', 'origin', $manifest.branch)
-    if ($script:rc -ne 0) { Fail "Remote branch $($manifest.branch) does not exist. Update mode needs an existing, pushed branch." }
+    $remoteBranchSha = Get-RemoteBranchSha $manifest.branch
+    if (-not $remoteBranchSha) { Fail "Exact remote branch refs/heads/$($manifest.branch) does not exist. Update mode needs an existing, pushed branch." }
     $null = Git-Try @('show-ref', '--verify', '--quiet', "refs/heads/$($manifest.branch)")
     if ($script:rc -ne 0) {
         Git-Do @('switch', '-c', $manifest.branch, '--track', "origin/$($manifest.branch)")
@@ -242,6 +409,9 @@ if ($script:updateMode) {
     if ($tip -ne $manifest.baseCommit) {
         Fail "$($manifest.branch) is at $tip but this delivery was built on $($manifest.baseCommit). Ask for a rebuilt delivery; do not copy files by hand."
     }
+    if ($remoteBranchSha -ne $manifest.baseCommit) {
+        Fail "Exact remote branch refs/heads/$($manifest.branch) is at $remoteBranchSha but this delivery was built on $($manifest.baseCommit). Ask for a rebuilt delivery; do not copy files by hand."
+    }
 } else {
     $originMain = "$(Git-Try @('rev-parse', 'origin/main'))".Trim()
     if ($originMain -ne $manifest.baseCommit) {
@@ -249,22 +419,53 @@ if ($script:updateMode) {
     }
     $null = Git-Try @('show-ref', '--verify', '--quiet', "refs/heads/$($manifest.branch)")
     if ($script:rc -eq 0) { Fail "Local branch $($manifest.branch) already exists." }
-    $null = Git-Try @('ls-remote', '--exit-code', '--heads', 'origin', $manifest.branch)
-    if ($script:rc -eq 0) { Fail "Remote branch $($manifest.branch) already exists." }
+    $remoteBranchSha = Get-RemoteBranchSha $manifest.branch
+    if ($remoteBranchSha) { Fail "Exact remote branch refs/heads/$($manifest.branch) already exists." }
 }
-foreach ($p in $deleted) {
-    if (-not (Test-Path -LiteralPath (Join-Path $script:repo ($p -replace '/', '\')) -PathType Leaf)) { Fail "File listed as deleted does not exist in the repository: $p" }
-}
-
 # 7. Apply only the manifest (new mode: on a new branch from origin/main; update mode: on the checked-out PR branch)
 Write-Host "== Applying delivery ==" -ForegroundColor Cyan
 if (-not $script:updateMode) { Git-Do @('switch', '-c', $manifest.branch, '--no-track', 'origin/main') }
 $script:branchCreated = $true
 try {
+    # Validate all targets before the first removal or copy.
+    foreach ($p in ($files + $deleted)) {
+        if (-not (Test-SafeDestinationPath $p $deleted)) {
+            Fail "Manifest path '$p' failed the destination check: $($script:destinationReason). Refusing to continue."
+        }
+    }
+    foreach ($p in $deleted) {
+        if (-not (Test-ExactTrackedIndexPath $p)) {
+            Fail "Deletion path is not an exact tracked Git index entry: $p"
+        }
+        $deletePath = Join-Path $script:repo ($p -replace '/', '\')
+        if (-not (Test-Path -LiteralPath $deletePath -PathType Leaf)) {
+            Fail "File listed as deleted does not exist in the repository: $p"
+        }
+    }
     # Deletions first: a deleted file may block the directory that a new file needs (file replaced by a folder).
-    foreach ($p in $deleted) { Remove-Item -LiteralPath (Join-Path $script:repo ($p -replace '/', '\')) -Force }
+    foreach ($p in $deleted) {
+        if (-not (Test-SafeDestinationPath $p)) {
+            Fail "Deletion path '$p' failed the destination check: $($script:destinationReason). Refusing to remove through it."
+        }
+        Remove-Item -LiteralPath (Join-Path $script:repo ($p -replace '/', '\')) -Force
+    }
     foreach ($p in $files) {
         $dst = Join-Path $script:repo ($p -replace '/', '\')
+        if (-not (Test-SafeDestinationPath $p)) {
+            Fail "Destination '$p' failed the destination check: $($script:destinationReason). Refusing to copy through it."
+        }
+        if (Test-Path -LiteralPath $dst -PathType Container) {
+            Fail "Destination is an existing directory, not a file: $p"
+        }
+        if (Test-Path -LiteralPath $dst) {
+            # A clean git status can hide ignored files. Require the exact, literal index path.
+            if (-not (Test-ExactTrackedIndexPath $p)) {
+                Fail "Destination already exists but is not an exact tracked Git index path (possibly ignored or matched by a wildcard): $p"
+            }
+        } else {
+            # Keep an exact list so rollback removes new files even when Git ignores them.
+            $script:createdPaths += $p
+        }
         $dir = Split-Path -Parent $dst
         if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
         Copy-Item -LiteralPath (Join-Path $pkg ($p -replace '/', '\')) -Destination $dst -Force
@@ -301,7 +502,25 @@ Git-Do @('diff', '--cached', '--stat')
 Write-Host ""
 Git-Do @('commit', '-F', (Join-Path $pkg 'commit.txt'))
 $script:committed = $true
-Git-Do @('push', '-u', 'origin', $manifest.branch)
+# Capture the exact commit just made; later pushes send this ID, never the mutable branch name.
+$deliveryCommit = "$(Git-Try @('rev-parse', '--verify', 'HEAD'))".Trim()
+if ($script:rc -ne 0 -or $deliveryCommit -notmatch '^[0-9a-f]{40}$') { Fail "Could not read the delivery commit after git commit. Nothing was pushed." }
+if ($script:updateMode) {
+    # The update is based on exactly baseCommit; the lease prevents recreating or replacing a moved/deleted PR ref.
+    $parentCommit = "$(Git-Try @('rev-parse', '--verify', "$deliveryCommit^"))".Trim()
+    if ($script:rc -ne 0 -or $parentCommit -ne $manifest.baseCommit) {
+        Fail "Delivery commit $deliveryCommit is not directly on $($manifest.baseCommit) (parent: $parentCommit). Nothing was pushed; inspect the clone."
+    }
+    $expectedRemoteRef = "refs/heads/$($manifest.branch):$($manifest.baseCommit)"
+    Git-Do @('push', "--force-with-lease=$expectedRemoteRef", 'origin', "${deliveryCommit}:refs/heads/$($manifest.branch)")
+    # Tracking is set only after the push succeeded.
+    $null = Git-Try @('branch', "--set-upstream-to=origin/$($manifest.branch)", $manifest.branch)
+    if ($script:rc -ne 0) { Write-Host "Pushed, but could not set upstream tracking for $($manifest.branch). Run: git branch --set-upstream-to=origin/$($manifest.branch)" -ForegroundColor Yellow }
+} else {
+    # An empty expected value in the lease means the remote ref must not exist: the push creates the branch or is rejected,
+    # even if another process created refs/heads/<branch> after the preflight check.
+    Git-Do @('push', '-u', "--force-with-lease=refs/heads/$($manifest.branch):", 'origin', $manifest.branch)
+}
 if ($script:updateMode) {
     # The PR already exists and picks up the new commit by itself; just show its address.
     $prev = $ErrorActionPreference
