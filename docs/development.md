@@ -138,11 +138,16 @@ the reports. No coverage threshold is enforced until a baseline has been measure
 
 ## Quality Gate (SonarQube Cloud)
 
-The Quality Gate is a setting of the SonarQube Cloud project, not a file in this repository. The `SonarQube Cloud analysis` job
+Status: this section describes the **intended** gate. Until the open steps below are done, treat the thresholds as target
+configuration, not as a gate that is active. Still open: creating and assigning the gate in SonarQube Cloud, verifying that both
+coverage reports are imported, and validating pass and fail (see "Rollout"). A "Quality Gate passed" result on a pull request
+only shows what the gate currently assigned to the project reports; it is not evidence that the gate below is configured.
+
+The Quality Gate is a setting of the SonarQube Cloud project, not a file in this repository. The `SonarQube Cloud analysis` CI job
 only runs the analysis; SonarQube Cloud evaluates the gate and reports it on the pull request as its own check and decoration.
 The job does not wait for the gate (no `sonar.qualitygate.wait`), so a failed gate does not fail the CI job by itself.
 
-Gate for new code (the Clean as You Code period; the gate never judges the existing code base):
+Intended gate for new code (the Clean as You Code period; the gate never judges the existing code base):
 
 | Condition | Threshold |
 | --- | --- |
@@ -153,17 +158,31 @@ Gate for new code (the Clean as You Code period; the gate never judges the exist
 | Duplicated lines on new code | at most 3% |
 | Coverage on new code | not a condition yet; add it (start at 60%) once the coverage baseline is measured |
 
+SonarQube Cloud skips the duplication and coverage conditions on a pull request with fewer than 20 new lines when the project
+setting "Ignore duplication and coverage on small changes" is on (the default). That is acceptable for a gate meant to catch
+bugs, vulnerabilities and unreviewed hotspots; switch the setting off only if small changes must also meet the duplication limit.
+
 Rollout:
 
+0. **Configure.** In SonarQube Cloud, create a gate with exactly the conditions above (coverage is not one of them), assign it to
+   this project, and confirm in the project settings that this gate, not the default "Sonar way", is the one in use. Confirm on a
+   real analysis that the backend (OpenCover) and frontend (LCOV) coverage reports are imported.
 1. **Advisory.** Keep the SonarQube Cloud check non-required in the branch ruleset. Review the first PR results for false
    positives and for new-code period mistakes, and mark confirmed false positives in SonarQube Cloud instead of loosening conditions.
-2. **Validate pass and fail** on a throw-away branch, never on `main`: a trivial change passes; a change that adds an obvious
-   bug (for example an unused assignment that overwrites a value, or a hard-coded credential string) fails the reliability or
-   security condition, and the PR shows the failed check. Delete the branch afterwards.
-3. **Required.** Only after step 2 and a clean run on real PRs, mark the SonarQube Cloud check as required in the branch ruleset.
+2. **Validate pass and fail** on a throw-away branch, never on `main`: a trivial change passes; a change that adds an issue
+   whose type is Bug or Vulnerability fails the matching rating condition, and the PR shows the failed check. Pick the rule from
+   the project's quality profile and confirm its type in SonarQube Cloud before relying on it (for example a null dereference
+   is normally reported as a Bug, an SQL statement built by string concatenation as a Vulnerability). An unused assignment is only
+   a code smell and a hard-coded credential string is normally only a security hotspot, so neither tests these two conditions.
+   Delete the branch afterward.
+3. **Required.** Only after steps 0 to 2 and a clean run on real PRs, mark the SonarQube Cloud check as required in the branch
+   ruleset. The analysis job is skipped for pull requests from forks (they get no GitHub OIDC permission), so a required check
+   would block them. This is a single-owner repository whose pull requests come from branches in the same repository. If fork
+   pull requests are ever accepted, keep the check non-required or give maintainers a ruleset bypass for them first.
 
-The gate result is evidence only for what SonarQube analyzed (C# and TypeScript under `src/`, `tests/` and `web/`); it does not
-replace the build, lint, unit-test or e2e jobs.
+The gate result is evidence only for what SonarQube analyzed. The job sets `sonar.scanner.scanAll=true` without exclusions, so
+besides C# and TypeScript under `src/`, `tests/` and `web/` it can also analyze other files there, such as HTML (for example
+`web/index.html`). No exclusion has been verified. It does not replace the build, lint, unit-test or e2e jobs.
 
 ## Management API
 
