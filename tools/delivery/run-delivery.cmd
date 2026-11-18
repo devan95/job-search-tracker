@@ -19,6 +19,7 @@ $script:branchCreated = $false   # true once the script has started changing the
 $script:committed = $false
 $script:updateMode = $false
 $script:manifest = $null
+$script:createdPaths = @()
 $DefaultRepo = 'C:\Users\Devan Shah\Repo\job-search-tracker'
 
 function Fail([string]$m) {
@@ -41,12 +42,21 @@ function Rollback {
             $rollbackFailures += 'git reset --hard HEAD'
             $rollbackComplete = $false
         }
-        $own = @($script:manifest.files)
-        if ($own.Count -gt 0) {
-            & git clean -fdq -- @own *> $null
-            if ($LASTEXITCODE -ne 0) {
-                $rollbackFailures += 'git clean -fdq for manifest files'
+        # Remove only files created by this run. Exact-path removal handles Git-ignored files;
+        # never use git clean -x because that could remove pre-existing ignored data.
+        foreach ($p in $script:createdPaths) {
+            $createdPath = Join-Path $script:repo ($p -replace '/', '\')
+            try {
+                if (Test-Path -LiteralPath $createdPath) {
+                    Remove-Item -LiteralPath $createdPath -Force -ErrorAction Stop
+                }
+                if (Test-Path -LiteralPath $createdPath) {
+                    throw "Created file remains after removal."
+                }
+            } catch {
+                $rollbackFailures += "remove created file $p"
                 $rollbackComplete = $false
+                Write-Host "Could not remove delivery-created file: $createdPath" -ForegroundColor Yellow
             }
         }
         if ($rollbackComplete -and -not $script:updateMode) {
@@ -95,6 +105,26 @@ function Git-Try([string[]]$GitArgs) {
     $script:rc = $LASTEXITCODE
     $ErrorActionPreference = $prev
     return $out
+}
+
+# Returns the SHA only when the exact remote branch ref exists. A failed query is not "branch absent".
+function Get-RemoteBranchSha([string]$Branch) {
+    $expectedRef = "refs/heads/$Branch"
+    $rows = Git-Try @('ls-remote', '--exit-code', '--heads', 'origin', $expectedRef)
+    if ($script:rc -eq 2) { return $null }
+    if ($script:rc -ne 0) {
+        Fail "Could not query remote ref $expectedRef (git ls-remote exit $script:rc)."
+    }
+    $matches = @()
+    foreach ($row in $rows) {
+        $parts = ([string]$row).Trim() -split '\s+'
+        if ($parts.Count -eq 2 -and $parts[1] -ceq $expectedRef) {
+            $matches += $parts[0]
+        }
+    }
+    if ($matches.Count -gt 1) { Fail "Remote query returned more than one exact result for $expectedRef." }
+    if ($matches.Count -eq 1) { return [string]$matches[0] }
+    return $null
 }
 
 function Test-SafePath([string]$p) {
@@ -172,23 +202,41 @@ if ($files.Count + $deleted.Count -eq 0) { Fail "Manifest lists no files." }
 foreach ($p in ($files + $deleted)) {
     if (-not (Test-SafePath $p)) { Fail "Unsafe path in manifest: '$p'." }
 }
-# The root launcher is a required package helper, never a repository path in the manifest.
-$rootLauncherInManifest = @($files + $deleted | Where-Object {
-    ([string]$_).TrimEnd([char[]]@('.', ' ')) -ieq 'run-delivery.cmd'
+$helpers = @('delivery-manifest.json', 'commit.txt', 'run-delivery.cmd')
+if (-not $script:updateMode) { $helpers += @('pr-title.txt', 'pr.txt') }
+
+# Package helpers are ZIP metadata/launcher files, never repository manifest paths.
+$helperInManifest = @($files + $deleted | Where-Object {
+    $candidate = ([string]$_).TrimEnd([char[]]@('.', ' '))
+    ($candidate.IndexOf('/') -lt 0) -and ($helpers -contains $candidate)
 })
-if ($rootLauncherInManifest.Count -gt 0) {
-    Fail "The package-root run-delivery.cmd is reserved for the launcher and must not appear in manifest.files or manifest.deleted."
+if ($helperInManifest.Count -gt 0) {
+    Fail "Package helper(s) must not appear in manifest.files or manifest.deleted: $($helperInManifest -join ', ')"
+}
+
+# Reject short-name aliases that resolve to a package helper as well as the long filename.
+$packageHelperNames = @{}
+foreach ($h in $helpers) {
+    $helperItem = Get-Item -LiteralPath (Join-Path $pkg $h) -Force
+    $packageHelperNames[$helperItem.Name.ToLowerInvariant()] = $true
+}
+foreach ($p in ($files + $deleted)) {
+    $candidatePath = Join-Path $pkg ($p -replace '/', '\')
+    if (Test-Path -LiteralPath $candidatePath -PathType Leaf) {
+        $candidateItem = Get-Item -LiteralPath $candidatePath -Force
+        $isPackageRoot = [string]::Equals($candidateItem.DirectoryName, $pkg, [StringComparison]::OrdinalIgnoreCase)
+        $resolvesToHelper = $packageHelperNames.ContainsKey($candidateItem.Name.ToLowerInvariant())
+        $looksLikeLauncherAlias = ($p -notmatch '/') -and ([string]$p -match '(?i)^RUN(?:-?DE)?~[0-9]+\.CMD$')
+        if ($isPackageRoot -and ($resolvesToHelper -or $looksLikeLauncherAlias)) {
+            Fail "Manifest path '$p' resolves to a reserved package helper. Package helpers must not be copied or staged into the clone."
+        }
+    }
 }
 foreach ($p in $files) {
     if ($deleted -contains $p) { Fail "Path is listed as both changed and deleted: $p" }
 }
 foreach ($p in $files) {
     if (-not (Test-Path -LiteralPath (Join-Path $pkg ($p -replace '/', '\')) -PathType Leaf)) { Fail "Listed file is missing from the delivery folder: $p" }
-}
-$helpers = @('delivery-manifest.json', 'commit.txt', 'run-delivery.cmd')
-if (-not $script:updateMode) { $helpers += @('pr-title.txt', 'pr.txt') }
-foreach ($h in $helpers) {
-    if (-not (Test-Path -LiteralPath (Join-Path $pkg $h))) { Fail "Delivery file missing: $h" }
 }
 $allowed = @{}
 foreach ($p in $files) { $allowed[(($p -replace '/', '\').ToLowerInvariant())] = $true }
@@ -246,8 +294,8 @@ if ($current -ne $target) {
 }
 if ($script:updateMode) {
     # Update mode: check out the existing, already pushed PR branch and bring it level with origin (fast-forward only).
-    $null = Git-Try @('ls-remote', '--exit-code', '--heads', 'origin', $manifest.branch)
-    if ($script:rc -ne 0) { Fail "Remote branch $($manifest.branch) does not exist. Update mode needs an existing, pushed branch." }
+    $remoteBranchSha = Get-RemoteBranchSha $manifest.branch
+    if (-not $remoteBranchSha) { Fail "Exact remote branch refs/heads/$($manifest.branch) does not exist. Update mode needs an existing, pushed branch." }
     $null = Git-Try @('show-ref', '--verify', '--quiet', "refs/heads/$($manifest.branch)")
     if ($script:rc -ne 0) {
         Git-Do @('switch', '-c', $manifest.branch, '--track', "origin/$($manifest.branch)")
@@ -287,8 +335,8 @@ if ($script:updateMode) {
     }
     $null = Git-Try @('show-ref', '--verify', '--quiet', "refs/heads/$($manifest.branch)")
     if ($script:rc -eq 0) { Fail "Local branch $($manifest.branch) already exists." }
-    $null = Git-Try @('ls-remote', '--exit-code', '--heads', 'origin', $manifest.branch)
-    if ($script:rc -eq 0) { Fail "Remote branch $($manifest.branch) already exists." }
+    $remoteBranchSha = Get-RemoteBranchSha $manifest.branch
+    if ($remoteBranchSha) { Fail "Exact remote branch refs/heads/$($manifest.branch) already exists." }
 }
 foreach ($p in $deleted) {
     if (-not (Test-Path -LiteralPath (Join-Path $script:repo ($p -replace '/', '\')) -PathType Leaf)) { Fail "File listed as deleted does not exist in the repository: $p" }
@@ -303,6 +351,16 @@ try {
     foreach ($p in $deleted) { Remove-Item -LiteralPath (Join-Path $script:repo ($p -replace '/', '\')) -Force }
     foreach ($p in $files) {
         $dst = Join-Path $script:repo ($p -replace '/', '\')
+        if (Test-Path -LiteralPath $dst) {
+            # A clean git status can hide ignored files. Never overwrite an existing file outside the index.
+            $null = Git-Try @('ls-files', '--error-unmatch', '--', $p)
+            if ($script:rc -ne 0) {
+                Fail "Destination already exists but is not tracked by Git (possibly ignored); refusing to overwrite it: $p"
+            }
+        } else {
+            # Keep an exact list so rollback removes new files even when Git ignores them.
+            $script:createdPaths += $p
+        }
         $dir = Split-Path -Parent $dst
         if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
         Copy-Item -LiteralPath (Join-Path $pkg ($p -replace '/', '\')) -Destination $dst -Force
