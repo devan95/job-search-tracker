@@ -255,16 +255,22 @@ public class CompanyListImportApiTests : ApiTestBase
         return id;
     }
 
-    /// <summary>Waits until another session is blocked on a lock (the import waiting for the held insert), or fails after 20 s.</summary>
-    private static async Task WaitUntilAnotherSessionIsBlockedAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Task<Reply> import)
+    /// <summary>
+    /// Waits until another session is blocked on a lock (the import waiting for the held insert), or fails after 20 s.
+    /// It polls from its own autocommit connection: inside the holder's open transaction PostgreSQL would keep returning the
+    /// same pg_stat_activity snapshot, so a backend opened after the first poll (the import's) would never show up.
+    /// </summary>
+    private async Task WaitUntilAnotherSessionIsBlockedAsync(Task<Reply> import)
     {
+        await using var monitor = new NpgsqlConnection(ConnectionString);
+        await monitor.OpenAsync();
         var deadline = DateTime.UtcNow.AddSeconds(20);
         while (DateTime.UtcNow < deadline)
         {
             Assert.False(import.IsCompleted, "The import finished instead of waiting for the held employer insert.");
             await using var command = new NpgsqlCommand(
                 "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid() AND wait_event_type = 'Lock'",
-                connection, transaction);
+                monitor);
             if ((long)(await command.ExecuteScalarAsync())! > 0)
             {
                 return;
@@ -287,7 +293,7 @@ public class CompanyListImportApiTests : ApiTestBase
 
         // The import creates Acme, then blocks on the unique index while "Globex" is held uncommitted.
         var import = PostAsync($"/api/company-lists/{listId}/import", new { text = "Acme\nGlobex\nInitech" });
-        await WaitUntilAnotherSessionIsBlockedAsync(holder, transaction, import);
+        await WaitUntilAnotherSessionIsBlockedAsync(import);
         await transaction.CommitAsync();
         var reply = await import.WaitAsync(TimeSpan.FromSeconds(30));
 
@@ -314,7 +320,7 @@ public class CompanyListImportApiTests : ApiTestBase
 
         // Import A has read Acme (existing, not in the list) and waits for the held Globex insert.
         var importA = PostAsync($"/api/company-lists/{listId}/import", new { text = "Acme\nGlobex" });
-        await WaitUntilAnotherSessionIsBlockedAsync(holder, transaction, importA);
+        await WaitUntilAnotherSessionIsBlockedAsync(importA);
 
         // Import B adds Acme to the list and commits while A is waiting; A's own membership for Acme will now conflict.
         var importB = await PostAsync($"/api/company-lists/{listId}/import", new { text = "Acme" });
