@@ -140,6 +140,12 @@ the reports. No coverage threshold is enforced until a baseline has been measure
 Candidates, employers, company lists and search profiles are managed through `/api/...`; see [api.md](api.md) for the
 endpoints, error semantics and examples. Its tests are database tests (they need `JOBSEARCH_TEST_ADMIN_CONNECTION`).
 
+The company-list paste import (`POST /api/company-lists/{id}/import/preview` and `.../import`, at most 1,000 non-blank rows per
+request) needs no schema change or migration. Its parser tests (`CompanyListImportParserTests`) need no database and run with
+`--filter "Category!=Database"`; its API tests (`CompanyListImportApiTests`, including a concurrent-import test) are database
+tests. Both import endpoints share one parser, so a preview and a save of the same text always agree. Contract: [api.md](api.md),
+section "Company-list import".
+
 ## Health endpoints
 
 | Endpoint | Meaning |

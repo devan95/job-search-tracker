@@ -81,6 +81,80 @@ There is no employer rename or update in Phase 1.
 | `PUT /company-lists/{id}/employers/{employerId}` | | Add an employer; adding again is a 204 no-op. One employer may be in many lists |
 | `DELETE /company-lists/{id}/employers/{employerId}` | | Remove the association only; 404 `not_a_member` if it does not exist |
 
+### Company-list import (paste preview and save)
+
+Task: *Company-list import: multiline parsing and duplicate preview.* The user pastes one company per line, checks the
+preview, and then confirms the save. Both endpoints take the same body, parse it with the same code, and need an existing
+list (`404 not_found` otherwise). Nothing here changes the normalization rule in [data-model.md](data-model.md).
+
+| Method and path | Body | Notes |
+| --- | --- | --- |
+| `POST /company-lists/{id}/import/preview` | `{ "text" }` | `200`. Writes nothing: no employer and no list membership is created |
+| `POST /company-lists/{id}/import` | `{ "text" }` | The confirmed save. `200` with the counts below; `400` and nothing saved when any row is invalid |
+
+**Parsing rules** (pure code, no database):
+
+- A line ends at CRLF, LF or CR, and nowhere else. **Commas are never delimiters**: `Acme, Inc.` is one company.
+- Every line is trimmed. Blank and whitespace-only lines are ignored, but they still count in `rowNumber` (1-based line number in the pasted text).
+- `name` is the trimmed line (what the user typed); `normalizedName` is the canonical form (NFKC, whitespace runs collapsed, invariant lower case), so `Acme Corp`, `ACME   corp` and `ＡＣＭＥ Corp` are one company.
+- **Limit: at most 1,000 non-blank rows per request.** More is `400 validation` on `text`. A name is at most 200 characters (also after normalization).
+- A missing `text`, or a text without any non-blank line, is `400 validation` on `text`.
+
+**Preview response** (`200`):
+
+```
+{ "rows": [ { "rowNumber", "input", "name", "normalizedName", "status",
+              "existingEmployerId", "duplicateOfRow", "message" } ],
+  "summary": { "total", "new", "existingEmployer", "alreadyInList", "duplicateInInput", "invalid" } }
+```
+
+`rows` has one entry per non-blank line, in input order. `input` is the line as pasted. `name` and `normalizedName` are
+`null` for an invalid row. `existingEmployerId` is set for `existing_employer` and `already_in_list`; `duplicateOfRow` is set
+for `duplicate_in_input`. `message` is a short human-readable explanation of what the save will do with the row. `summary`
+counts rows per status; the five counts add up to `total`.
+
+| `status` | Meaning | What the save does |
+| --- | --- | --- |
+| `new` | No canonical employer has this normalized name | Creates the employer and adds it to the list |
+| `existing_employer` | The employer exists but is not in this list | Reuses the employer and adds it to the list |
+| `already_in_list` | The employer is already in this list | Skips the row |
+| `duplicate_in_input` | An earlier row has the same normalized name (`duplicateOfRow` is the first such row) | Skips the row |
+| `invalid` | The row cannot be used (for example longer than 200 characters); `message` says why | Blocks the whole save |
+
+**Save response** (`200`): `{ "created", "reused", "addedToList", "skipped" }`.
+
+- `created`: new canonical employers created (and added to the list).
+- `reused`: existing canonical employers matched by normalized name that were added to the list (`existing_employer` rows).
+- `addedToList`: list memberships added (`created + reused`).
+- `skipped`: rows that changed nothing (`already_in_list` and `duplicate_in_input`).
+- `created + reused + skipped` equals the number of non-blank rows.
+
+The save is stateless: it parses the text again, so it cannot disagree with a preview of the same text, and a row's status is
+decided at save time against the current database. If any row is `invalid`, the answer is `400 validation` with one message
+per invalid row under `errors.text` (`Row 6: ...`) and nothing is saved. Otherwise everything is saved in one transaction.
+Missing employers are created with the same race-safe find-or-create as `POST /employers/resolve`; no duplicate employer and
+no duplicate membership can result. Running the same import twice changes nothing the second time (`created`, `reused` and
+`addedToList` are `0`). Employers are never deleted and other lists are never touched.
+
+```
+POST /api/company-lists/2a9e.../import/preview
+{ "text": "Acme\n  GLOBEX \nInitech, Inc.\n\ninitech, inc." }
+-> 200 { "rows": [
+           { "rowNumber": 1, "input": "Acme", "name": "Acme", "normalizedName": "acme", "status": "already_in_list",
+             "existingEmployerId": "b1d2...", "duplicateOfRow": null, "message": "Already in this list; it will be skipped." },
+           { "rowNumber": 2, "input": "  GLOBEX ", "name": "GLOBEX", "normalizedName": "globex", "status": "existing_employer",
+             "existingEmployerId": "c7e8...", "duplicateOfRow": null, "message": "The company already exists; it will be reused and added to the list." },
+           { "rowNumber": 3, "input": "Initech, Inc.", "name": "Initech, Inc.", "normalizedName": "initech, inc.", "status": "new",
+             "existingEmployerId": null, "duplicateOfRow": null, "message": "New company; it will be created and added to the list." },
+           { "rowNumber": 5, "input": "initech, inc.", "name": "initech, inc.", "normalizedName": "initech, inc.", "status": "duplicate_in_input",
+             "existingEmployerId": null, "duplicateOfRow": 3, "message": "Same company as row 3; it will be skipped." } ],
+         "summary": { "total": 4, "new": 1, "existingEmployer": 1, "alreadyInList": 1, "duplicateInInput": 1, "invalid": 0 } }
+
+POST /api/company-lists/2a9e.../import
+{ "text": "Acme\n  GLOBEX \nInitech, Inc.\n\ninitech, inc." }
+-> 200 { "created": 1, "reused": 1, "addedToList": 2, "skipped": 2 }
+```
+
 ### Search profiles
 
 | Method and path | Body | Notes |
