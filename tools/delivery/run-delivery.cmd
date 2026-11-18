@@ -52,9 +52,14 @@ function Rollback {
                 if (-not (Test-SafeDestinationPath $p $script:deletedPaths)) {
                     throw "Destination check failed: $($script:destinationReason). Refusing to remove through it."
                 }
-                # After the reset, a tracked path was added by another commit and is not a file this run created.
-                if (Test-ExactTrackedIndexPath $p) {
+                # Remove only after a successful index query confirms the path is untracked. After the reset a tracked
+                # path was added by another commit and is not a file this run created; a failed query proves nothing.
+                $indexState = Get-ExactTrackedIndexState $p
+                if ($indexState -eq 'tracked') {
                     throw "Path is tracked after reset; it was not created by this run. Not removing."
+                }
+                if ($indexState -ne 'untracked') {
+                    throw "Could not confirm that the path is untracked (index check: $indexState). Not removing."
                 }
                 if (Test-Path -LiteralPath $createdPath) {
                     Remove-Item -LiteralPath $createdPath -Force -ErrorAction Stop
@@ -116,12 +121,23 @@ function Git-Try([string[]]$GitArgs) {
     return $out
 }
 
+# Three-state index lookup for an exact repository path:
+#   'tracked'   - the exact path is in the index
+#   'untracked' - the query succeeded and the index has no entry at or under the path
+#   'error'     - the query itself failed (never treat this as 'untracked')
+#   'other'     - the query matched something that is not exactly this path
+function Get-ExactTrackedIndexState([string]$p) {
+    $entries = Git-Try @('-c', 'core.quotepath=false', '--literal-pathspecs', 'ls-files', '--', $p)
+    if ($script:rc -ne 0) { return 'error' }
+    $normalized = @($entries | ForEach-Object { ([string]$_) -replace '\\', '/' } | Where-Object { $_ -ne '' })
+    if ($normalized.Count -eq 0) { return 'untracked' }
+    if ($normalized.Count -eq 1 -and $normalized[0] -ceq $p) { return 'tracked' }
+    return 'other'
+}
+
 # Returns true only when the exact repository path is present in the Git index.
 function Test-ExactTrackedIndexPath([string]$p) {
-    $entries = Git-Try @('-c', 'core.quotepath=false', '--literal-pathspecs', 'ls-files', '--error-unmatch', '--', $p)
-    if ($script:rc -ne 0) { return $false }
-    $normalized = @($entries | ForEach-Object { ([string]$_) -replace '\\', '/' })
-    return ($normalized.Count -eq 1 -and $normalized[0] -ceq $p)
+    return ((Get-ExactTrackedIndexState $p) -eq 'tracked')
 }
 
 # Returns the SHA only when the exact remote branch ref exists. A failed query is not "branch absent".
@@ -248,7 +264,7 @@ foreach ($f in $required) {
 if ($manifest.baseCommit -notmatch '^[0-9a-f]{40}$') { Fail "Manifest baseCommit is not a full 40-character SHA." }
 if ($script:updateMode) {
     # An existing PR branch keeps its own name (for example chore/<name>); it must still be a plain, safe ref name.
-    if ($manifest.branch -cnotmatch '^[a-z0-9][a-z0-9._/-]*$' -or $manifest.branch -cmatch '\.\.|//|/$|\.lock$|\.$') { Fail "Branch '$($manifest.branch)' is not a safe existing PR branch name." }
+    if ($manifest.branch -cnotmatch '^[A-Za-z0-9][A-Za-z0-9._/-]*$' -or $manifest.branch -cmatch '\.\.|//|/$|\.lock$|\.$') { Fail "Branch '$($manifest.branch)' is not a safe existing PR branch name." }
 } elseif ($manifest.branch -notmatch '^ac[1-6]/[a-z0-9][a-z0-9-]*$') { Fail "Branch '$($manifest.branch)' does not match ac1..ac6/<short-task-name>." }
 # One path form (forward slashes) for every later comparison.
 $files = @($manifest.files | ForEach-Object { "$_" -replace '\\', '/' })
@@ -501,7 +517,9 @@ if ($script:updateMode) {
     $null = Git-Try @('branch', "--set-upstream-to=origin/$($manifest.branch)", $manifest.branch)
     if ($script:rc -ne 0) { Write-Host "Pushed, but could not set upstream tracking for $($manifest.branch). Run: git branch --set-upstream-to=origin/$($manifest.branch)" -ForegroundColor Yellow }
 } else {
-    Git-Do @('push', '-u', 'origin', $manifest.branch)
+    # An empty expected value in the lease means the remote ref must not exist: the push creates the branch or is rejected,
+    # even if another process created refs/heads/<branch> after the preflight check.
+    Git-Do @('push', '-u', "--force-with-lease=refs/heads/$($manifest.branch):", 'origin', $manifest.branch)
 }
 if ($script:updateMode) {
     # The PR already exists and picks up the new commit by itself; just show its address.

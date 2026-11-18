@@ -321,14 +321,17 @@ must not duplicate the commit. Keep the extracted package and clone, then inspec
 `refs/heads/<branch>`; a similarly prefixed ref such as `refs/heads/archive/ac1/task` is not the target branch.
 Exit code 2 means no matching ref; any other non-zero exit code is a query failure and must stop recovery.
 - If the exact remote branch is absent, and the local branch is clean and the retained commit is the intended delivery,
-  retry with `git push -u origin <branch>`.
+  retry with `git push -u --force-with-lease=refs/heads/<branch>: origin <branch>`. The empty expected value makes the
+  push create the branch only if the remote ref is still absent.
 - If the exact remote branch already points to the retained delivery commit, the push may have succeeded despite a lost
   response; do not push again. Continue with the PR step below.
-- If the exact remote branch still points to `baseCommit`, the local branch is clean, and the retained delivery commit is
-  the **only** commit after `baseCommit` (`git rev-list --count <baseCommit>..HEAD` returns `1` and
-  `git merge-base --is-ancestor <baseCommit> HEAD` succeeds), retry with
-  `git push --force-with-lease=refs/heads/<branch>:<baseCommit> origin <commitId>:refs/heads/<branch>`, where
-  `<commitId>` is the delivery commit recorded by those checks (`git rev-parse --verify HEAD`); never push the mutable
+- If the exact remote branch still points to `baseCommit` and the local branch is clean, first record the delivery
+  commit with `git rev-parse --verify HEAD` as `<commitId>`. Then require that it is the **only** commit after
+  `baseCommit` (`git rev-list --count <baseCommit>..<commitId>` returns `1` and
+  `git merge-base --is-ancestor <baseCommit> <commitId>` succeeds), run against `<commitId>` and not against `HEAD`, and
+  retry with
+  `git push --force-with-lease=refs/heads/<branch>:<baseCommit> origin <commitId>:refs/heads/<branch>`, pushing exactly
+  the commit those checks inspected; never push the mutable
   branch name. The ancestry and one-commit checks ensure the update is a fast-forward from `baseCommit`. The explicit expected-tip lease makes the retry fail if
   the remote ref was deleted or moved after inspection, rather than unintentionally recreating or replacing it. Do not
   use a plain push for this race-sensitive retry.
