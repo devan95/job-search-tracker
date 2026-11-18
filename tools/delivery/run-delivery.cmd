@@ -260,11 +260,14 @@ foreach ($p in ($files + $deleted)) {
 }
 $helpers = @('delivery-manifest.json', 'commit.txt', 'run-delivery.cmd')
 if (-not $script:updateMode) { $helpers += @('pr-title.txt', 'pr.txt') }
+# Reserved names: every package helper of either mode. A root-level pr.txt or pr-title.txt must never
+# be staged into the clone, not even in update mode where those two files are not required.
+$reservedHelpers = @('delivery-manifest.json', 'commit.txt', 'run-delivery.cmd', 'pr-title.txt', 'pr.txt')
 
 # Package helpers are ZIP metadata/launcher files, never repository manifest paths.
 $helperInManifest = @($files + $deleted | Where-Object {
     $candidate = ([string]$_).TrimEnd([char[]]@('.', ' '))
-    ($candidate.IndexOf('/') -lt 0) -and ($helpers -contains $candidate)
+    ($candidate.IndexOf('/') -lt 0) -and ($reservedHelpers -contains $candidate)
 })
 if ($helperInManifest.Count -gt 0) {
     Fail "Package helper(s) must not appear in manifest.files or manifest.deleted: $($helperInManifest -join ', ')"
@@ -275,9 +278,12 @@ foreach ($h in $helpers) {
 }
 # Reject short-name aliases that resolve to a package helper as well as the long filename.
 $packageHelperNames = @{}
-foreach ($h in $helpers) {
-    $helperItem = Get-Item -LiteralPath (Join-Path $pkg $h) -Force
-    $packageHelperNames[$helperItem.Name.ToLowerInvariant()] = $true
+foreach ($h in $reservedHelpers) {
+    $helperPath = Join-Path $pkg $h
+    if (Test-Path -LiteralPath $helperPath -PathType Leaf) {
+        $helperItem = Get-Item -LiteralPath $helperPath -Force
+        $packageHelperNames[$helperItem.Name.ToLowerInvariant()] = $true
+    }
 }
 foreach ($p in ($files + $deleted)) {
     $candidatePath = Join-Path $pkg ($p -replace '/', '\')
