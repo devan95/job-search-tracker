@@ -66,6 +66,61 @@ jobs:
       - run: npm test
       - run: npm run build
 
+  e2e:
+    name: E2E (Playwright smoke)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            web/package-lock.json
+            e2e/package-lock.json
+      - name: Generate a throw-away database password
+        run: |
+          pw="$(openssl rand -hex 16)"
+          echo "::add-mask::$pw"
+          echo "POSTGRES_PASSWORD=$pw" >> "$GITHUB_ENV"
+      - name: Start database, apply migrations, start API
+        run: |
+          docker compose up -d --wait db
+          docker compose run --rm migrate
+          docker compose up -d api
+      - name: Wait for the API to be ready
+        run: |
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:5080/api/health/ready && exit 0
+            sleep 2
+          done
+          docker compose logs api
+          exit 1
+      - run: npm ci --ignore-scripts --prefix web
+      - run: npm ci --ignore-scripts --prefix e2e
+      - run: npm run install-browsers -- --with-deps
+        working-directory: e2e
+      - run: npm run typecheck
+        working-directory: e2e
+      - run: npm test
+        working-directory: e2e
+        env:
+          CI: "true"
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Stop the stack
+        if: always()
+        run: docker compose down -v
+
   secret-scan:
     runs-on: ubuntu-latest
     permissions:
@@ -157,6 +212,7 @@ jobs:
           "$RUNNER_TEMP/sonar-scanner/dotnet-sonarscanner" begin \
             /k:"${{ steps.sonar-auth.outputs.project-key }}" \
             /o:"${{ steps.sonar-auth.outputs.organization }}" \
+            /d:sonar.coverage.exclusions="e2e/**" \
             /d:sonar.token="$SONAR_TOKEN" \
             /d:sonar.scanner.scanAll=true \
             /d:sonar.cs.opencover.reportsPaths="$GITHUB_WORKSPACE/coverage/dotnet/**/coverage.opencover.xml" \

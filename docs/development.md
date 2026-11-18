@@ -147,6 +147,34 @@ endpoints, error semantics and examples. Its tests are database tests (they need
 | `GET /api/health/live` | Process is up. Never touches the database. |
 | `GET /api/health/ready` | `200 {status: ok, database: ok}` when PostgreSQL answers; `503 {status: degraded, database: unavailable}` otherwise. |
 
+## End-to-end tests (Playwright)
+
+Browser tests live in `e2e/` and run against the real stack: PostgreSQL and the API from Docker Compose, and the Vite dev
+server, which Playwright starts itself (`web/` needs `npm ci` once). Only the smoke test exists today (app loads, API and
+database report healthy); workflow tests are separate tasks.
+
+```
+docker compose up -d --wait db
+docker compose run --rm migrate
+docker compose up -d api
+cd web && npm ci --ignore-scripts && cd ..
+cd e2e
+npm ci --ignore-scripts
+npm run install-browsers
+npm test
+```
+
+On Linux, use `npm run install-browsers -- --with-deps` instead (as CI does). It also installs Chromium's system
+libraries and needs `sudo`; without them the smoke test cannot launch the browser.
+
+Set `E2E_WEB_URL` (default `http://127.0.0.1:5173`) or `E2E_API_URL` (default `http://127.0.0.1:5080`) to point at another
+instance. `E2E_API_URL` is also passed to the Vite server that Playwright starts as `API_PROXY_TARGET`, so the browser tests
+and the direct health test use the same API. If you already run `npm run dev` yourself, start it with the same
+`API_PROXY_TARGET`; Playwright reuses a running server outside CI. Use the disposable project settings from "Verifying the workflow on a disposable database" if you do not want
+to touch your normal database, and `docker compose down` afterwards. A failed run leaves `e2e/playwright-report/` and
+`e2e/test-results/` (traces and screenshots; both are git-ignored). CI runs this as the `e2e` job and uploads them as an
+artifact on failure. `e2e/` is excluded from SonarQube coverage (it contains tests only).
+
 ## Code base for an AI session
 
 The repository is public. Every AI session (accounts AC1 to AC5) takes the latest `main` itself: a shallow clone
