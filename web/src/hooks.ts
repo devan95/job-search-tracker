@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError } from './api'
 
 export function toApiError(err: unknown): ApiError {
@@ -13,24 +13,38 @@ export type LoadState<T> =
 
 /**
  * Loads data when the component mounts. `reload` refetches without clearing
- * data already shown, except after an error, where it returns to loading.
+ * data already shown, except after an error, where it returns to loading. Its
+ * promise resolves once that refetch has settled (loaded or failed) and the new
+ * state is set, or when the component unmounts; it never rejects, so callers
+ * that do not care can ignore it.
  * Give the component a `key` to load something different.
  */
 export function useLoad<T>(loader: () => Promise<T>): {
   state: LoadState<T>
-  reload: () => void
+  reload: () => Promise<void>
 } {
   const [state, setState] = useState<LoadState<T>>({ kind: 'loading' })
   const [tick, setTick] = useState(0)
+  const waiting = useRef<Array<() => void>>([])
+
+  const settle = useCallback(() => {
+    const done = waiting.current
+    waiting.current = []
+    done.forEach((resolve) => resolve())
+  }, [])
 
   useEffect(() => {
     let cancelled = false
     loader().then(
       (data) => {
-        if (!cancelled) setState({ kind: 'ready', data })
+        if (cancelled) return
+        setState({ kind: 'ready', data })
+        settle()
       },
       (err: unknown) => {
-        if (!cancelled) setState({ kind: 'error', error: toApiError(err) })
+        if (cancelled) return
+        setState({ kind: 'error', error: toApiError(err) })
+        settle()
       },
     )
     return () => {
@@ -39,9 +53,14 @@ export function useLoad<T>(loader: () => Promise<T>): {
     // The loader is fixed for the life of the component; tick triggers reloads.
   }, [tick])
 
+  // Anyone still waiting when the component goes away must not hang.
+  useEffect(() => settle, [settle])
+
   const reload = useCallback(() => {
+    const settled = new Promise<void>((resolve) => waiting.current.push(resolve))
     setState((prev) => (prev.kind === 'error' ? { kind: 'loading' } : prev))
     setTick((t) => t + 1)
+    return settled
   }, [])
 
   return { state, reload }

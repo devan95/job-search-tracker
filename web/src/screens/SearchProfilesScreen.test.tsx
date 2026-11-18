@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SearchProfile } from '../api'
-import { mockApi, problem } from '../test/mockApi'
+import { deferred, mockApi, problem, type MockReply } from '../test/mockApi'
 import SearchProfilesScreen from './SearchProfilesScreen'
 
 afterEach(() => vi.restoreAllMocks())
@@ -313,5 +313,38 @@ describe('SearchProfilesScreen', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Server error')
     expect(screen.getByRole('button', { name: 'Reload' })).toBeInTheDocument()
+  })
+
+  it('keeps the editor disabled until the reload after a partly failed save finishes', async () => {
+    const stale = profile({ companyLists: [{ id: 'l1', name: listA.name, defaultWorkModes: [] }] })
+    const reloaded = profile({ name: 'Renamed on server', companyLists: stale.companyLists })
+    const release = deferred<MockReply>()
+    let gets = 0
+    mockApi({
+      ...baseRoutes(),
+      'GET /api/search-profiles': () => {
+        gets += 1
+        return gets === 1 ? { status: 200, body: [stale] } : release.promise
+      },
+      'PUT /api/search-profiles/p1': { status: 200, body: reloaded },
+      'PUT /api/search-profiles/p1/company-lists/l2': problem(500, 'unexpected'),
+    })
+    const user = userEvent.setup()
+    render(<SearchProfilesScreen />)
+
+    await user.click(await screen.findByRole('button', { name: 'Edit Backend roles' }))
+    const form = screen.getByRole('form', { name: 'Edit search profile' })
+    await user.click(within(form).getByLabelText('Remote-first startups'))
+    await user.click(within(form).getByRole('button', { name: 'Save profile' }))
+
+    // The write has failed and the reload is still in flight: nothing may be edited yet.
+    await vi.waitFor(() => expect(gets).toBe(2))
+    expect(within(form).getByRole('button', { name: 'Save profile' })).toBeDisabled()
+    expect(within(form).getByLabelText('Profile name')).toBeDisabled()
+
+    release.resolve({ status: 200, body: [reloaded] })
+    const fresh = await screen.findByDisplayValue('Renamed on server')
+    expect(fresh).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Save profile' })).toBeEnabled()
   })
 })

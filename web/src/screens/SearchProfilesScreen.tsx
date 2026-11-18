@@ -208,12 +208,15 @@ interface LoadedProps {
   candidates: Candidate[]
   lists: CompanyListSummary[]
   profiles: SearchProfile[]
-  reload: () => void
+  reload: () => Promise<void>
 }
 
 function ProfilesLoaded({ candidates, lists, profiles, reload }: LoadedProps) {
   const createAction = useAction()
   const rowAction = useAction()
+  // True from the start of a save until the reload that follows it has finished.
+  const [reconciling, setReconciling] = useState(false)
+  const rowBusy = rowAction.busy || reconciling
   const [filter, setFilter] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
@@ -229,6 +232,17 @@ function ProfilesLoaded({ candidates, lists, profiles, reload }: LoadedProps) {
   }
 
   async function onSave(profile: SearchProfile, values: ProfileValues): Promise<boolean> {
+    // Keep the editor disabled through the reload, so edits made while the server's state
+    // is still being fetched are not discarded when the form is remounted with it.
+    setReconciling(true)
+    try {
+      return await save(profile, values)
+    } finally {
+      setReconciling(false)
+    }
+  }
+
+  async function save(profile: SearchProfile, values: ProfileValues): Promise<boolean> {
     const result = await rowAction.run(async () => {
       await updateSearchProfile(profile.id, {
         name: values.name,
@@ -245,7 +259,7 @@ function ProfilesLoaded({ candidates, lists, profiles, reload }: LoadedProps) {
       }
     })
     // Some steps may have applied even when a later one failed: show the server's state.
-    reload()
+    await reload()
     if (result.ok) setEditingId(null)
     return result.ok
   }
@@ -321,7 +335,7 @@ function ProfilesLoaded({ candidates, lists, profiles, reload }: LoadedProps) {
                   submitLabel="Save profile"
                   lists={lists}
                   fixedCandidateName={candidateName(profile.candidateId)}
-                  busy={rowAction.busy}
+                  busy={rowBusy}
                   error={rowAction.error}
                   onSubmit={(values) => onSave(profile, values)}
                   onCancel={() => setEditingId(null)}
@@ -371,7 +385,7 @@ function ProfilesLoaded({ candidates, lists, profiles, reload }: LoadedProps) {
                         <button
                           type="button"
                           onClick={() => void onDelete(profile)}
-                          disabled={rowAction.busy}
+                          disabled={rowBusy}
                           aria-label={`Confirm delete ${profile.name}`}
                         >
                           Yes, delete
