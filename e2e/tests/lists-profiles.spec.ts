@@ -7,6 +7,7 @@ import {
   apiFindEmployers,
   apiGetList,
   apiGetProfile,
+  apiListAll,
   apiImport,
   apiUrl,
   candidateRow,
@@ -266,7 +267,7 @@ test('validation and conflict feedback: blank names, duplicate names, missing ca
   const listAlert = page.getByRole('alert')
   await expect(listAlert).toContainText('Name already in use')
   await expect(listAlert).toContainText('Another company list already uses this name')
-  const all = (await (await request.get(`${apiUrl}/api/company-lists`, { params: { take: '500' } })).json()) as { name: string }[]
+  const all = await apiListAll<{ name: string }>(request, '/api/company-lists')
   expect(all.filter((l) => l.name.toLowerCase() === list.name.toLowerCase())).toHaveLength(1)
 
   // Search profile: no candidate chosen, then a duplicate name for the same candidate (allowed for another candidate).
@@ -331,8 +332,7 @@ test('import: empty paste, invalid row blocks the save, edits discard the previe
 })
 
 async function findCandidateId(request: APIRequestContext, name: string): Promise<string> {
-  const response = await request.get(`${apiUrl}/api/candidates`, { params: { take: '500' } })
-  const found = ((await response.json()) as { id: string; name: string }[]).find((c) => c.name === name)
+  const found = (await apiListAll<{ id: string; name: string }>(request, '/api/candidates')).find((c) => c.name === name)
   if (!found) throw new Error(`Candidate ${name} was not stored`)
   return found.id
 }

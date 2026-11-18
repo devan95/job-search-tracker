@@ -104,6 +104,19 @@ export async function apiFindEmployers(request: APIRequestContext, text: string)
   return (await response.json()) as Employer[]
 }
 
+/** Reads every page of a list endpoint (`skip`/`take`, at most 500 per page), so a busy database cannot hide a row. */
+export async function apiListAll<T>(request: APIRequestContext, path: string): Promise<T[]> {
+  const pageSize = 500
+  const all: T[] = []
+  for (let skip = 0; ; skip += pageSize) {
+    const response = await request.get(`${apiUrl}${path}`, { params: { skip: String(skip), take: String(pageSize) } })
+    expect(response.status()).toBe(200)
+    const page = (await response.json()) as T[]
+    all.push(...page)
+    if (page.length < pageSize) return all
+  }
+}
+
 // ---- Navigation and UI building blocks ----
 
 export type Section = 'Candidates' | 'Company lists' | 'Search profiles'
