@@ -5,9 +5,13 @@ Project: Job Search & Application Tracker (local-first; .NET 10, React/TypeScrip
 ## Read before starting
 
 1. Open the [Notion Project Hub](https://app.notion.com/p/41544a92926f81dab0b7fc1f6451e23f).
-2. Up to five accounts (AC1 to AC5) work in parallel, each on its own Task Board rows. Read the Notion page "Account Lanes (AC1 to AC5): Work Queue and Prompt" for your lane, the claim rules and the generic session prompt. Claim your row on the Task Board before you start.
+2. Six accounts (AC1 to AC6) work from the same Task Board. Read [docs/agent-operating-model.md](docs/agent-operating-model.md) and the Notion Account Lanes page. AC1–AC5 own their default lanes; AC6 reviews independently by default and takes an eligible AC1–AC5 Ready task when it has no pending review/task. Claim your row before you start.
 3. Read the relevant confirmed requirement/decision and the exact Task Board item, including **Brief for the next account**. Follow the Notion Work Protocol and Testing Plan.
 4. Read `devan95/job-search-tracker` (public) directly: shallow clone of the latest `main` (`git clone --depth 1`), or single files from `raw.githubusercontent.com`; do not use a repository attached as context in a Claude Project. Record the commit id as your base; verify the latest commit, CI result and actual files. Inspect the real working tree and preserve uncommitted work. If a user ZIP is attached, follow the Notion Attached ZIP rule before using it.
+
+## Operating model
+
+The complete AC1–AC6 role, takeover, self-contained delivery ZIP and PR-thread reply/resolution rules are in [`docs/agent-operating-model.md`](docs/agent-operating-model.md). That document overrides any older account-count or delivery wording in historical notes.
 
 ## Documentation ownership
 
@@ -43,7 +47,7 @@ Database tests require PostgreSQL and `JOBSEARCH_TEST_ADMIN_CONNECTION`; see `do
 
 ## Delivery
 
-Follow the current Notion Work Protocol (section 7) for branch, review and delivery requirements. Deliver only the changed and added files, each complete and at its repo path, never a patch, a diff, an archive or the whole tree. Compare the delivered list with your own diff against the base: a changed file missing from the delivery is a blocker, and a file you did not change must not be in it. Hidden files count (`.github/`, `.config/`, `.gitignore`, `.env.example`, and so on). In the final message give the base commit, the branch, the checks and `Deleted files: none` or the full paths of deleted files. Exclude `.git`, secrets, real `.env` files, candidate data, local databases, caches and build artifacts. The user performs the Git commit/push unless explicitly authorized otherwise; the copy steps are in [`docs/development.md`](docs/development.md), section "Applying a delivery".
+Follow the current Notion Work Protocol (section 7) for branch, review and delivery requirements. Deliver only the changed and added files, each complete and at its repo path, plus the delivery metadata and a root-level copy of `tools/delivery/run-delivery.cmd`; never a patch, a diff, an archive of the whole tree or extra files. The user extracts the ZIP outside the clone and double-clicks the included `run-delivery.cmd`. Compare the delivered list with your own diff against the base: a changed file missing from the delivery is a blocker, and a file you did not change must not be in it. Hidden files count (`.github/`, `.config/`, `.gitignore`, `.env.example`, and so on). In the final message give the base commit, the branch, the checks and `Deleted files: none` or the full paths of deleted files. Exclude `.git`, secrets, real `.env` files, candidate data, local databases, caches and build artifacts. The packaged runner performs the checked commit/push/PR steps after the user double-clicks it; the copy steps and safety checks are in [`docs/development.md`](docs/development.md), section "Applying a delivery with the runner (Windows)".
 
 ## PR review submission workflow
 
