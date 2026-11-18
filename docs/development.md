@@ -72,6 +72,7 @@ docker compose exec db psql -U jobsearch -d jobsearch -c "\dt"
 - Existing database behind the latest migration: applies only the missing migrations, in order.
 - Running `migrate` again is always safe (idempotent). A failed migration exits non-zero; read the log before retrying.
 - It never drops tables or volumes. Take a backup before applying a migration to a database you care about.
+- The database image is PostgreSQL 18, which cannot start on a data volume created by PostgreSQL 17. For an existing local volume, dump it first (`docker compose exec db pg_dump -U jobsearch jobsearch > backup.sql`) while still on 17, then run `docker compose down -v`, start the new image and restore the dump. A fresh volume needs nothing.
 
 Without Docker for the API (Option B) use `dotnet ef database update --project src/JobSearchTracker.Api --startup-project src/JobSearchTracker.Api`
 with `ConnectionStrings:Default` set.
@@ -119,7 +120,7 @@ dotnet test JobSearchTracker.slnx
 committed file. To run only the tests that need no database, use `dotnet test JobSearchTracker.slnx --filter "Category!=Database"`;
 that run does not prove the migration or schema.
 
-CI runs the same tests against a PostgreSQL 17 service and also runs
+CI runs the same tests against a PostgreSQL 18 service and also runs
 `dotnet ef migrations has-pending-model-changes`, which fails when the model changed without a new migration.
 After changing the model, add a migration: `dotnet ef migrations add <Name> --project src/JobSearchTracker.Api --startup-project src/JobSearchTracker.Api`
 (with `ConnectionStrings:Default` set). The data model is described in `data-model.md`.

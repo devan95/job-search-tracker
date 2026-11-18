@@ -20,7 +20,7 @@ jobs:
     timeout-minutes: 15
     services:
       postgres:
-        image: postgres:17
+        image: postgres:18
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: ci_only_not_a_secret
@@ -160,7 +160,7 @@ jobs:
     # The coverage run below executes the database tests, so it needs the same throw-away PostgreSQL service as the backend job.
     services:
       postgres:
-        image: postgres:17
+        image: postgres:18
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: ci_only_not_a_secret
