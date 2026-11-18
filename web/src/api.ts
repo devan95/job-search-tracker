@@ -290,8 +290,156 @@ export const removeEmployerFromList = (
 ): Promise<void> =>
   request('DELETE', `/company-lists/${id(listId)}/employers/${id(employerId)}`)
 
+// Company-list import: paste preview and confirmed save (docs/api.md, "Company-list import").
+export type ImportRowStatus =
+  | 'new'
+  | 'existing_employer'
+  | 'already_in_list'
+  | 'duplicate_in_input'
+  | 'invalid'
+
+export interface ImportPreviewRow {
+  /** 1-based line number in the pasted text; blank lines still count. */
+  rowNumber: number
+  input: string
+  name: string | null
+  normalizedName: string | null
+  status: ImportRowStatus
+  existingEmployerId: string | null
+  duplicateOfRow: number | null
+  message: string
+}
+
+export interface ImportPreviewSummary {
+  total: number
+  new: number
+  existingEmployer: number
+  alreadyInList: number
+  duplicateInInput: number
+  invalid: number
+}
+
+export interface ImportPreview {
+  rows: ImportPreviewRow[]
+  summary: ImportPreviewSummary
+}
+
+export interface ImportResult {
+  created: number
+  reused: number
+  addedToList: number
+  skipped: number
+}
+
+/** A count from the API: a whole number, never negative. */
+const isCount = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 0
+
+/** A 1-based row number. */
+const isRowNumber = (value: unknown): value is number => isCount(value) && value >= 1
+
+const IMPORT_ROW_STATUSES: readonly string[] = [
+  'new',
+  'existing_employer',
+  'already_in_list',
+  'duplicate_in_input',
+  'invalid',
+]
+
+const isImportRowStatus = (value: unknown): value is ImportRowStatus =>
+  typeof value === 'string' && IMPORT_ROW_STATUSES.includes(value)
+
+const unexpectedResponse = (): ApiError =>
+  new ApiError('invalid_response', 'The API returned an unexpected response.')
+
+const textOrNull = (value: unknown): string | null =>
+  typeof value === 'string' ? value : null
+
+function readImportPreview(data: unknown): ImportPreview {
+  if (!isRecord(data) || !Array.isArray(data.rows) || !isRecord(data.summary)) {
+    throw unexpectedResponse()
+  }
+  const s = data.summary
+  if (
+    !isCount(s.total) ||
+    !isCount(s.new) ||
+    !isCount(s.existingEmployer) ||
+    !isCount(s.alreadyInList) ||
+    !isCount(s.duplicateInInput) ||
+    !isCount(s.invalid)
+  ) {
+    throw unexpectedResponse()
+  }
+  const rows = data.rows.map((row: unknown): ImportPreviewRow => {
+    if (
+      !isRecord(row) ||
+      !isRowNumber(row.rowNumber) ||
+      typeof row.input !== 'string' ||
+      !isImportRowStatus(row.status)
+    ) {
+      throw unexpectedResponse()
+    }
+    return {
+      rowNumber: row.rowNumber,
+      input: row.input,
+      name: textOrNull(row.name),
+      normalizedName: textOrNull(row.normalizedName),
+      status: row.status,
+      existingEmployerId: textOrNull(row.existingEmployerId),
+      duplicateOfRow: isRowNumber(row.duplicateOfRow) ? row.duplicateOfRow : null,
+      message: typeof row.message === 'string' ? row.message : '',
+    }
+  })
+  return {
+    rows,
+    summary: {
+      total: s.total,
+      new: s.new,
+      existingEmployer: s.existingEmployer,
+      alreadyInList: s.alreadyInList,
+      duplicateInInput: s.duplicateInInput,
+      invalid: s.invalid,
+    },
+  }
+}
+
+function readImportResult(data: unknown): ImportResult {
+  if (
+    !isRecord(data) ||
+    !isCount(data.created) ||
+    !isCount(data.reused) ||
+    !isCount(data.addedToList) ||
+    !isCount(data.skipped)
+  ) {
+    throw unexpectedResponse()
+  }
+  return {
+    created: data.created,
+    reused: data.reused,
+    addedToList: data.addedToList,
+    skipped: data.skipped,
+  }
+}
+
+/** Parses the pasted text on the server and reports each row; writes nothing. */
+export async function previewCompanyImport(
+  listId: string,
+  text: string,
+): Promise<ImportPreview> {
+  return readImportPreview(
+    await request<unknown>('POST', `/company-lists/${id(listId)}/import/preview`, { text }),
+  )
+}
+
+/** The confirmed save. The server parses the text again; any invalid row saves nothing (400). */
+export async function importCompanies(listId: string, text: string): Promise<ImportResult> {
+  return readImportResult(
+    await request<unknown>('POST', `/company-lists/${id(listId)}/import`, { text }),
+  )
+}
+
 // Search profiles
-export const listSearchProfiles = (): Promise<SearchProfile[]> =>
+export const listSearchProfiles =(): Promise<SearchProfile[]> =>
   requestList(`/search-profiles?${PAGE}`)
 
 export const createSearchProfile = (
