@@ -143,14 +143,17 @@ not editable and no custom gate is needed. It was confirmed active in the projec
 Coverage on new code was measured at a baseline of 88.29%. Still open: validating pass and fail on a throw-away branch and marking
 the SonarQube Cloud check as required in the branch ruleset (see "Rollout"). The gate is therefore active but not yet validated and
 not yet enforced. Until the 13 `void` fixes for intentionally ignored `reload()` promises (the frontend task "Mark intentionally
-ignored reload() promises with void...") are merged, the Reliability condition fails on `main`; that is existing code and does not
-by itself fail a pull request, because the gate judges new code only.
+ignored reload() promises with void...") are merged, the Reliability condition fails on `main`; that code is already merged but
+still inside the new-code period, and it does not by itself fail a pull request, because on a pull request the gate judges only
+the change relative to the target branch.
 
 The Quality Gate is a setting of the SonarQube Cloud project, not a file in this repository. The `SonarQube Cloud analysis` CI job
 only runs the analysis; SonarQube Cloud evaluates the gate and reports it on the pull request as its own check and decoration.
 The job does not wait for the gate (no `sonar.qualitygate.wait`), so a failed gate does not fail the CI job by itself.
 
-The built-in Sonar way gate judges new code only (the Clean as You Code period; the gate never judges the existing code base).
+The built-in Sonar way gate applies its conditions only to code classified as new by the project's configured new-code definition
+(the Clean as You Code period), not to code outside it. On a pull request, new code is the change relative to the target branch.
+On `main`, code that is already merged still counts as new until the new-code period moves past it.
 Its conditions:
 
 | Condition | Threshold |
