@@ -1,6 +1,6 @@
 @echo off
-rem One-click delivery runner. Usage: run-delivery.cmd "<extracted delivery folder>"
-rem (drag the folder onto this file, or run it and paste the folder path). See docs/development.md, "Applying a delivery".
+rem One-click delivery runner. Every delivery ZIP carries this file at its root; extract and double-click it.
+rem Drag this package folder onto the launcher to pass its path explicitly. See docs/development.md, "Applying a delivery".
 rem Two modes, chosen by "mode" in delivery-manifest.json: "new" (default: new branch + commit + push + PR) and
 rem "update" (an existing pushed PR branch: check it out, apply the files, commit, push; no new PR).
 setlocal
@@ -107,6 +107,17 @@ if ([string]::IsNullOrWhiteSpace($pkg)) {
 if (-not (Test-Path -LiteralPath $pkg -PathType Container)) { Fail "Delivery folder not found: $pkg" }
 $pkg = (Resolve-Path -LiteralPath $pkg).Path.TrimEnd('\')
 
+# Require the runner copy shipped at the package root; do not rely on a separate repo copy.
+$packagedRunner = Join-Path $pkg 'run-delivery.cmd'
+if (-not (Test-Path -LiteralPath $packagedRunner -PathType Leaf)) {
+    Fail "The delivery is missing root-level run-delivery.cmd. Rebuild the ZIP; no manual copy is supported."
+}
+$invokedRunner = (Resolve-Path -LiteralPath $env:DELIVERY_CMD).Path
+$packagedRunner = (Resolve-Path -LiteralPath $packagedRunner).Path
+if (-not [string]::Equals($invokedRunner, $packagedRunner, [StringComparison]::OrdinalIgnoreCase)) {
+    Fail "Run the root-level run-delivery.cmd included in this extracted package."
+}
+
 # 3. Manifest and package files
 $manifestPath = Join-Path $pkg 'delivery-manifest.json'
 if (-not (Test-Path -LiteralPath $manifestPath)) { Fail "delivery-manifest.json is missing in $pkg." }
@@ -122,7 +133,7 @@ foreach ($f in $required) {
     if ([string]::IsNullOrWhiteSpace($manifest.$f)) { Fail "Manifest field '$f' is missing." }
 }
 if ($manifest.baseCommit -notmatch '^[0-9a-f]{40}$') { Fail "Manifest baseCommit is not a full 40-character SHA." }
-if ($manifest.branch -notmatch '^ac[1-5]/[a-z0-9][a-z0-9-]*$') { Fail "Branch '$($manifest.branch)' does not match ac<n>/<short-task-name>." }
+if ($manifest.branch -notmatch '^ac[1-6]/[a-z0-9][a-z0-9-]*$') { Fail "Branch '$($manifest.branch)' does not match ac1..ac6/<short-task-name>." }
 # One path form (forward slashes) for every later comparison.
 $files = @($manifest.files | ForEach-Object { "$_" -replace '\\', '/' })
 $deleted = @($manifest.deleted | ForEach-Object { "$_" -replace '\\', '/' })
@@ -136,14 +147,14 @@ foreach ($p in $files) {
 foreach ($p in $files) {
     if (-not (Test-Path -LiteralPath (Join-Path $pkg ($p -replace '/', '\')) -PathType Leaf)) { Fail "Listed file is missing from the delivery folder: $p" }
 }
-$helpers = @('delivery-manifest.json', 'commit.txt')
+$helpers = @('delivery-manifest.json', 'commit.txt', 'run-delivery.cmd')
 if (-not $script:updateMode) { $helpers += @('pr-title.txt', 'pr.txt') }
 foreach ($h in $helpers) {
     if (-not (Test-Path -LiteralPath (Join-Path $pkg $h))) { Fail "Delivery file missing: $h" }
 }
 $allowed = @{}
 foreach ($p in $files) { $allowed[(($p -replace '/', '\').ToLowerInvariant())] = $true }
-foreach ($h in ($helpers + 'run-delivery.cmd')) { $allowed[$h.ToLowerInvariant()] = $true }
+foreach ($h in $helpers) { $allowed[$h.ToLowerInvariant()] = $true }
 foreach ($item in (Get-ChildItem -LiteralPath $pkg -Recurse -File -Force)) {
     $rel = $item.FullName.Substring($pkg.Length + 1).ToLowerInvariant()
     if (-not $allowed.ContainsKey($rel)) { Fail "The delivery folder contains a file that is not in the manifest: $rel" }
