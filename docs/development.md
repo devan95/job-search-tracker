@@ -276,11 +276,13 @@ For an update to an existing PR, the package contains:
 
 Extract the ZIP outside the repository clone and double-click the root-level `run-delivery.cmd`. It auto-detects its own
 package folder. No manual copy from the clone and no separate runner path are needed. The runner checks Git and authenticated
-GitHub CLI and validates the manifest, package paths and launcher before touching the clone. These package/preflight failures,
-a dirty working tree, or an unsafe current branch leave the clone untouched.
+GitHub CLI and validates the manifest, package paths and launcher before touching the clone. Package-validation and dirty-tree
+failures occur before fetch and leave the clone unchanged. The runner then fetches `origin`; that can update remote-tracking
+refs even when it later refuses to leave the current branch. If the current branch has unpushed commits or cannot safely be
+left, the runner stops after fetch without switching the checked-out branch or changing the working tree.
 
-After that preflight, the runner fetches `origin`, switches to the target branch (`main` for new mode or the existing PR
-branch for update mode) and may fast-forward it. The exact `baseCommit` check happens **after** this synchronization. A
+After that check, the runner switches to the target branch (`main` for new mode or the existing PR branch for update mode)
+and may fast-forward it. The exact `baseCommit` check happens **after** this synchronization. A
 stale base can therefore be rejected after the clone has already fetched, switched branches or fast-forwarded; the runner
 does not undo those synchronization steps. A failure while applying files after the delivery branch is selected triggers a
 rollback attempt. The runner checks each rollback command and reports completion only when reset/cleanup and (for new mode)
@@ -305,13 +307,19 @@ The runner never force-pushes. On success the existing PR updates automatically.
 A failed push after `git commit` leaves the completed delivery commit on the local branch; the runner deliberately does not
 roll it back. **Do not rerun the same ZIP**: the existing local branch causes new-mode preflight to stop, and update mode
 must not duplicate the commit. Keep the extracted package and clone, then inspect the current branch, `git status` and
-`git log -1 --oneline` to verify the retained delivery commit. Run `git fetch origin` and inspect
-`git ls-remote --heads origin <branch>` before pushing:
-- If the remote branch is absent, and the local branch is clean and the retained commit is the intended delivery, retry
-  with `git push -u origin <branch>`.
-- If the remote branch already points to that exact commit, the push may have succeeded despite a lost response; do not
-  push again. Continue with the PR step below.
-- If the remote branch exists at a different commit, stop and compare the histories. Do not force-push; reconcile the
+`git log -1 --oneline` to verify the retained delivery commit. Run `git fetch origin` and query the **exact** ref:
+`git ls-remote --exit-code --heads origin refs/heads/<branch>`. Verify that the returned second column is exactly
+`refs/heads/<branch>`; a similarly prefixed ref such as `refs/heads/archive/ac1/task` is not the target branch.
+Exit code 2 means no matching ref; any other non-zero exit code is a query failure and must stop recovery.
+- If the exact remote branch is absent, and the local branch is clean and the retained commit is the intended delivery,
+  retry with `git push -u origin <branch>`.
+- If the exact remote branch already points to the retained delivery commit, the push may have succeeded despite a lost
+  response; do not push again. Continue with the PR step below.
+- If the exact remote branch still points to `baseCommit`, the local branch is clean, and the retained delivery commit is
+  the **only** commit after `baseCommit` (`git rev-list --count <baseCommit>..HEAD` returns `1` and
+  `git merge-base --is-ancestor <baseCommit> HEAD` succeeds), retry with `git push origin <branch>`. This is a
+  fast-forward push; Git rejects it if the remote moves before the retry.
+- If the exact remote branch exists at any other commit, stop and compare the histories. Do not force-push; reconcile the
   remote work or request a rebuilt delivery.
 
 After a successful push in new mode, create the PR if the runner did not:
