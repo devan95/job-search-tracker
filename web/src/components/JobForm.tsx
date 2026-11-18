@@ -86,6 +86,8 @@ export function JobForm({
 }: Props) {
   const [values, setValues] = useState<JobFormValues>(initial)
   const [errors, setErrors] = useState<JobFormErrors>({})
+  // The draft that was last sent. A duplicate warning applies to that draft only.
+  const [sent, setSent] = useState<JobFormValues | null>(null)
 
   const set = <K extends keyof JobFormValues>(key: K, value: JobFormValues[K]) =>
     setValues((previous) => ({ ...previous, [key]: value }))
@@ -99,6 +101,7 @@ export function JobForm({
     const found = validateJobForm(values)
     setErrors(found)
     if (Object.keys(found).length > 0) return
+    setSent(values)
     onSubmit(values, confirmDifferentJob)
   }
 
@@ -110,8 +113,11 @@ export function JobForm({
   const problem = error?.problem
   const existingId = problem?.existingId
   const openExisting = onOpenExisting
-  const duplicateWarning = problem?.code === 'possible_duplicate'
-  const isDuplicate = duplicateWarning || problem?.code === 'duplicate_requisition'
+  const warned = problem?.code === 'possible_duplicate'
+  const draftUnchanged = sent !== null && JSON.stringify(sent) === JSON.stringify(values)
+  // The override is offered only for the exact draft the API warned about.
+  const duplicateWarning = warned && draftUnchanged
+  const isDuplicate = warned || problem?.code === 'duplicate_requisition'
   const canOpenExisting = isDuplicate && existingId !== undefined && openExisting !== undefined
 
   return (
@@ -240,6 +246,11 @@ export function JobForm({
       />
 
       {error && <ProblemAlert error={error} subject="job" />}
+      {warned && !draftUnchanged && (
+        <p className="hint">
+          The form changed after the duplicate warning. Save again to check the new details.
+        </p>
+      )}
       {(duplicateWarning || canOpenExisting) && (
         <div className="buttons">
           {duplicateWarning && (

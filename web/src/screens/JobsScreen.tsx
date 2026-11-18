@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import {
+  ApiError,
   changeJobStatus,
   createJob,
   deleteJob,
@@ -219,19 +220,41 @@ function JobDetail({
   // Separate actions so an error is shown against the form or control it came from.
   const editAction = useAction()
   const rowAction = useAction()
-  const busy = editAction.busy || rowAction.busy
+  // True from a saved edit until the fresh job is loaded: Edit job stays off so a form is never
+  // opened against the old values.
+  const [settling, setSettling] = useState(false)
+  const busy = editAction.busy || rowAction.busy || settling
   const [editing, setEditing] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   async function onSave(values: JobFormValues, confirmDifferentJob: boolean) {
     rowAction.clearError()
-    const result = await editAction.run(() =>
-      updateJob(jobId, jobFormToInput(values, confirmDifferentJob)),
-    )
+    const loaded = state.kind === 'ready' ? state.data : null
+    let stale = false
+    const result = await editAction.run(async () => {
+      // The API has no version precondition on PUT, which replaces every field. Compare with the
+      // current job first so an edit made from an old copy does not silently undo newer changes.
+      const current = await getJob(jobId)
+      if (loaded && current.updatedAtUtc !== loaded.updatedAtUtc) {
+        stale = true
+        throw new ApiError('problem', 'The job changed after the editor opened.', {
+          title: 'The job changed after the editor opened.',
+          status: 409,
+          code: 'concurrent_modification',
+        })
+      }
+      return updateJob(jobId, jobFormToInput(values, confirmDifferentJob))
+    })
     if (result.ok) {
+      setSettling(true)
+      await reload()
+      setSettling(false)
+      setEditing(false)
+      onChanged()
+    } else if (stale) {
+      // Show the newer job so the user can redo the edit on top of it.
       setEditing(false)
       void reload()
-      onChanged()
     }
   }
 
@@ -255,6 +278,7 @@ function JobDetail({
   if (state.kind === 'error') return <ProblemAlert error={state.error} subject="job" onReload={reload} />
 
   const job = state.data
+  const shownError = rowAction.error ?? editAction.error
   const allowed = allowedJobStatuses(job.status)
 
   return (
@@ -319,8 +343,8 @@ function JobDetail({
           </dl>
           {job.description && <p className="description">{job.description}</p>}
 
-          {rowAction.error && (
-            <ProblemAlert error={rowAction.error} subject="job" onReload={() => void reload()} />
+          {shownError && (
+            <ProblemAlert error={shownError} subject="job" onReload={() => void reload()} />
           )}
 
           <div className="buttons">
@@ -329,6 +353,7 @@ function JobDetail({
               disabled={busy}
               onClick={() => {
                 rowAction.clearError()
+                editAction.clearError()
                 setConfirmingDelete(false)
                 setEditing(true)
               }}

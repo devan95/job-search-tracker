@@ -11,7 +11,7 @@ import {
 import { useAction, useLoad } from '../hooks'
 import {
   APPLICATION_STATUS_LABEL,
-  APPLICATION_STATUSES,
+  correctionStatuses,
   AUDIT_ACTION_LABEL,
   JOB_STATUS_LABEL,
   describeAuditChange,
@@ -51,13 +51,16 @@ export function ApplicationPanel({ applicationId, onChanged }: Props) {
   const action = useAction()
   const [mode, setMode] = useState<Mode>('none')
 
-  /** Runs a write; on success closes the open form, reloads the application and tells the parent. */
+  /**
+   * Runs a write; on success tells the parent at once (so a list refreshes even if this panel was
+   * closed during the save), closes the open form and refreshes this application.
+   */
   async function perform(write: () => Promise<unknown>): Promise<boolean> {
     const result = await action.run(write)
     if (!result.ok) return false
+    onChanged?.()
     setMode('none')
     await reload()
-    onChanged?.()
     return true
   }
 
@@ -326,7 +329,7 @@ function CorrectForm({
           disabled={busy}
         >
           <option value="">Keep the current status</option>
-          {APPLICATION_STATUSES.map((s) => (
+          {correctionStatuses(application.isApplied).map((s) => (
             <option key={s} value={s}>
               {APPLICATION_STATUS_LABEL[s]}
             </option>

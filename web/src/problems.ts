@@ -183,7 +183,7 @@ export function describeError(error: ApiError, subject = 'item'): ProblemView {
     case 'concurrent_modification':
       return view(
         'Changed by someone else',
-        'This record was changed or deleted while your request ran. Reload to see its current state, then try again.',
+        'This record was changed or deleted after it was loaded or while your request ran. Reload to see its current state, then try again.',
         { reloadable: true },
       )
     default:

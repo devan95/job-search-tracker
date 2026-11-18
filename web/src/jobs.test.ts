@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { ApiError, type ApplicationAuditItem, type Job, type Problem } from './api'
 import {
   allowedJobStatuses,
+  correctionStatuses,
   describeAuditChange,
   emptyJobForm,
   jobFormToInput,
@@ -251,5 +252,15 @@ describe('describeError for jobs and applications', () => {
     for (const [problem, heading] of cases) {
       expect(describeError(problemError(problem)).heading).toBe(heading)
     }
+  })
+})
+
+describe('correctionStatuses', () => {
+  it('offers only statuses that need no confirmation when not applied', () => {
+    expect(correctionStatuses(false)).toEqual(['saved', 'pendingVerification', 'rejected', 'withdrawn'])
+  })
+
+  it('never offers saved or pendingVerification for an applied application', () => {
+    expect(correctionStatuses(true)).toEqual(['applied', 'interview', 'offer', 'rejected', 'withdrawn'])
   })
 })

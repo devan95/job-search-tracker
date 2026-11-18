@@ -113,7 +113,7 @@ function ApplicationList({
             type="button"
             className="row-button"
             aria-current={application.id === selectedId ? 'true' : undefined}
-            aria-label={`Open application: ${application.job.title} at ${application.job.employer.name}`}
+            aria-label={`Open application: ${application.job.title} at ${application.job.employer.name} for ${names.get(application.candidateId) ?? 'Unknown candidate'}`}
             onClick={() => onOpen(application.id)}
           >
             <span className="row-name">

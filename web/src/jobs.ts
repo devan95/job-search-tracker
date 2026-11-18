@@ -128,6 +128,19 @@ export function nextApplicationStatuses(current: ApplicationStatus): Application
   return next
 }
 
+/**
+ * Statuses a correction can set, by the application's applied state (docs/api.md, "Correct"):
+ * applied, interview and offer need a confirmed application; saved and pendingVerification are
+ * not allowed on an applied one. The API stays the authority.
+ */
+export function correctionStatuses(isApplied: boolean): ApplicationStatus[] {
+  return APPLICATION_STATUSES.filter((status) =>
+    isApplied
+      ? status !== 'saved' && status !== 'pendingVerification'
+      : status !== 'applied' && status !== 'interview' && status !== 'offer',
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Dates
 // ---------------------------------------------------------------------------

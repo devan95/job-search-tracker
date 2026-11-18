@@ -195,6 +195,94 @@ describe('JobsScreen: manual entry', () => {
   })
 })
 
+describe('JobsScreen: duplicate override and stale edits', () => {
+  it('withdraws the override once the draft changes after a duplicate warning', async () => {
+    const calls = mockApi({
+      'GET /api/jobs': { status: 200, body: [] },
+      'POST /api/jobs': problem(409, 'possible_duplicate', { matchedOn: 'canonicalUrl', existingId: 'j0' }),
+    })
+    const user = userEvent.setup()
+    render(<JobsScreen />)
+    await screen.findByText(/No jobs yet/)
+
+    await user.click(screen.getByRole('button', { name: 'Add job' }))
+    await user.type(screen.getByLabelText('Company'), 'Acme')
+    await user.type(screen.getByLabelText('Job title'), 'Engineer')
+    await user.type(screen.getByLabelText('Apply link'), 'https://x.test/a')
+    await user.click(screen.getByRole('button', { name: 'Save job' }))
+    expect(await screen.findByRole('button', { name: 'This is a different job: save anyway' })).toBeInTheDocument()
+
+    await user.clear(screen.getByLabelText('Apply link'))
+    await user.type(screen.getByLabelText('Apply link'), 'https://x.test/b')
+
+    expect(screen.queryByRole('button', { name: 'This is a different job: save anyway' })).not.toBeInTheDocument()
+    expect(screen.getByText(/changed after the duplicate warning/)).toBeInTheDocument()
+    expect(calls.filter((c) => c.method === 'POST')).toHaveLength(1)
+  })
+
+  it('does not undo a newer change: an edit from an old copy is refused', async () => {
+    let current = job()
+    let reads = 0
+    const calls = mockApi({
+      'GET /api/jobs': () => ({ status: 200, body: [current] }),
+      'GET /api/jobs/j1': () => {
+        reads += 1
+        // The first read is the detail; later reads see a change saved elsewhere.
+        if (reads > 1) current = job({ location: 'Mumbai', updatedAtUtc: '2026-11-18T07:00:00Z' })
+        return { status: 200, body: current }
+      },
+      'GET /api/candidates': candidates,
+      'PUT /api/jobs/j1': { status: 200, body: job() },
+    })
+    const user = userEvent.setup()
+    render(<JobsScreen />)
+    await user.click(await screen.findByRole('button', { name: 'Open Backend Engineer at Acme' }))
+    await user.click(await screen.findByRole('button', { name: 'Edit job' }))
+    const title = screen.getByLabelText('Job title')
+    await user.clear(title)
+    await user.type(title, 'Staff Engineer')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Changed by someone else')
+    expect(calls.some((c) => c.method === 'PUT')).toBe(false)
+    expect(await screen.findByText('Mumbai')).toBeInTheDocument()
+  })
+
+  it('keeps Edit job off until the fresh job has loaded after a save', async () => {
+    let current = job()
+    const gate = deferred<MockReply>()
+    let detailReads = 0
+    mockApi({
+      'GET /api/jobs': () => ({ status: 200, body: [current] }),
+      'GET /api/jobs/j1': async () => {
+        detailReads += 1
+        // read 1: detail load, read 2: the stale check, read 3: the reload after the save
+        if (detailReads === 3) await gate.promise
+        return { status: 200, body: current }
+      },
+      'GET /api/candidates': candidates,
+      'PUT /api/jobs/j1': (req) => {
+        current = job({ ...(req.body as object), employer: { id: 'e1', name: 'Acme' }, updatedAtUtc: '2026-11-18T08:00:00Z' })
+        return { status: 200, body: current }
+      },
+    })
+    const user = userEvent.setup()
+    render(<JobsScreen />)
+    await user.click(await screen.findByRole('button', { name: 'Open Backend Engineer at Acme' }))
+    await user.click(await screen.findByRole('button', { name: 'Edit job' }))
+    const title = screen.getByLabelText('Job title')
+    await user.clear(title)
+    await user.type(title, 'Staff Engineer')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    // While the reload is held back the form is still shown and disabled: no stale reopen.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled())
+    gate.resolve({ status: 200 })
+    expect(await screen.findByRole('heading', { name: 'Staff Engineer at Acme' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Edit job' })).toBeEnabled()
+  })
+})
+
 describe('JobsScreen: editing and status', () => {
   const setup = (extra: Record<string, MockHandler> = {}) => {
     let current = job()

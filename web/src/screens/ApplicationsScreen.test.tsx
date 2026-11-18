@@ -1,7 +1,7 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mockApi, problem } from '../test/mockApi'
+import { deferred, mockApi, problem, type MockReply } from '../test/mockApi'
 import ApplicationsScreen from './ApplicationsScreen'
 import JobsScreen from './JobsScreen'
 
@@ -326,6 +326,89 @@ describe('ApplicationsScreen: later statuses', () => {
     expect(calls.find((c) => c.path.endsWith('/unapply'))?.body).toEqual({ reason: 'Clicked by mistake' })
   })
 
+  it('offers only corrections that fit the applied state', async () => {
+    mockApi(applicationRoutes(applied()).routes)
+    const user = userEvent.setup()
+    render(<ApplicationsScreen />)
+    await user.click(await screen.findByRole('button', { name: /Open application/ }))
+    await user.click(await screen.findByRole('button', { name: 'Correct' }))
+
+    const form = screen.getByRole('form', { name: 'Correct application' })
+    const options = within(within(form).getByLabelText('New status'))
+      .getAllByRole('option')
+      .map((o) => o.textContent)
+    expect(options).toEqual(['Keep the current status', 'Applied', 'Interview', 'Offer', 'Rejected', 'Withdrawn'])
+  })
+
+  it('offers no applied-only corrections for a saved application', async () => {
+    mockApi(applicationRoutes().routes)
+    const user = userEvent.setup()
+    render(<ApplicationsScreen />)
+    await user.click(await screen.findByRole('button', { name: /Open application/ }))
+    await user.click(await screen.findByRole('button', { name: 'Correct' }))
+
+    const form = screen.getByRole('form', { name: 'Correct application' })
+    const options = within(within(form).getByLabelText('New status'))
+      .getAllByRole('option')
+      .map((o) => o.textContent)
+    expect(options).toEqual(['Keep the current status', 'Saved', 'Pending verification', 'Rejected', 'Withdrawn'])
+  })
+
+  it('refreshes the list even when another application is opened during the save', async () => {
+    const second = application({ id: 'a2', candidateId: 'c2' })
+    let first = applied()
+    const gate = deferred<MockReply>()
+    const calls = mockApi({
+      'GET /api/candidates': {
+        status: 200,
+        body: [
+          { id: 'c1', name: 'Asha Rao' },
+          { id: 'c2', name: 'Ravi Nair' },
+        ],
+      },
+      'GET /api/applications': () => ({ status: 200, body: [first, second] }),
+      'GET /api/applications/a1': () => ({ status: 200, body: first }),
+      'GET /api/applications/a2': { status: 200, body: second },
+      'POST /api/applications/a1/status': async () => {
+        const reply = await gate.promise
+        first = application({ status: 'interview', isApplied: true, method: 'manual', appliedAtUtc: '2026-11-18T06:00:00Z' })
+        return reply
+      },
+    })
+    const user = userEvent.setup()
+    render(<ApplicationsScreen />)
+    await user.click(await screen.findByRole('button', { name: /Open application: .* for Asha Rao/ }))
+    await user.selectOptions(await screen.findByLabelText('Change status to'), 'interview')
+    await user.click(screen.getByRole('button', { name: 'Update status' }))
+
+    await user.click(screen.getByRole('button', { name: /Open application: .* for Ravi Nair/ }))
+    gate.resolve({ status: 200, body: first })
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Open application: .* for Asha Rao/ })).toHaveTextContent('Interview'),
+    )
+    expect(calls.filter((c) => c.method === 'GET' && c.path === '/api/applications').length).toBeGreaterThan(1)
+  })
+
+  it('gives two applications for the same job different accessible names', async () => {
+    mockApi({
+      'GET /api/candidates': {
+        status: 200,
+        body: [
+          { id: 'c1', name: 'Asha Rao' },
+          { id: 'c2', name: 'Ravi Nair' },
+        ],
+      },
+      'GET /api/applications': {
+        status: 200,
+        body: [application(), application({ id: 'a2', candidateId: 'c2' })],
+      },
+    })
+    render(<ApplicationsScreen />)
+    expect(await screen.findByRole('button', { name: /for Asha Rao/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /for Ravi Nair/ })).toBeInTheDocument()
+  })
+
   it('records a correction with a reason', async () => {
     const calls = mockApi({
       ...applicationRoutes(applied()).routes,
@@ -437,7 +520,8 @@ describe('JobsScreen: applications for a job', () => {
     const user = await openJobAndChooseCandidate()
     await user.click(await screen.findByRole('button', { name: 'Track application' }))
 
-    expect(await screen.findByText(/already has an application for this job/)).toBeInTheDocument()
+    // Recovery opens the existing record; the 409 alert stays visible next to it.
+    expect(await screen.findByRole('heading', { name: /Application: Backend Engineer at Acme/ })).toBeInTheDocument()
     expect(screen.getByRole('alert')).toHaveTextContent('Application already exists')
   })
 
