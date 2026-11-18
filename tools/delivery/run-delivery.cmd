@@ -20,6 +20,8 @@ $script:committed = $false
 $script:updateMode = $false
 $script:manifest = $null
 $script:createdPaths = @()
+$script:deletedPaths = @()       # manifest deletions; a deleted file may become a directory
+$script:destinationReason = ''  # why the last Test-SafeDestinationPath call refused a path
 $DefaultRepo = 'C:\Users\Devan Shah\Repo\job-search-tracker'
 
 function Fail([string]$m) {
@@ -47,8 +49,12 @@ function Rollback {
         foreach ($p in $script:createdPaths) {
             $createdPath = Join-Path $script:repo ($p -replace '/', '\')
             try {
-                if (-not (Test-SafeDestinationPath $p)) {
-                    throw "A reparse-point ancestor now exists; refusing to remove through it."
+                if (-not (Test-SafeDestinationPath $p $script:deletedPaths)) {
+                    throw "Destination check failed: $($script:destinationReason). Refusing to remove through it."
+                }
+                # After the reset, a tracked path was added by another commit and is not a file this run created.
+                if (Test-ExactTrackedIndexPath $p) {
+                    throw "Path is tracked after reset; it was not created by this run. Not removing."
                 }
                 if (Test-Path -LiteralPath $createdPath) {
                     Remove-Item -LiteralPath $createdPath -Force -ErrorAction Stop
@@ -59,7 +65,7 @@ function Rollback {
             } catch {
                 $rollbackFailures += "remove created file $p"
                 $rollbackComplete = $false
-                Write-Host "Could not safely remove delivery-created file: $createdPath" -ForegroundColor Yellow
+                Write-Host "Could not safely remove delivery-created file: $createdPath ($($_.Exception.Message))" -ForegroundColor Yellow
             }
         }
         if ($rollbackComplete -and -not $script:updateMode) {
@@ -150,26 +156,35 @@ function Test-SafePath([string]$p) {
     return $true
 }
 
-# Reject any existing reparse point (junction/symlink) in the repo-relative destination path.
-function Test-SafeDestinationPath([string]$p) {
-    if (-not (Test-SafePath $p)) { return $false }
+# Reject any existing reparse point (junction/symlink) in the repo-relative destination path, and any existing
+# file where a directory is needed. $DeletedFileAncestors lists tracked files the delivery deletes first, so a
+# file that is replaced by a directory is allowed. Sets $script:destinationReason when it returns $false.
+function Test-SafeDestinationPath([string]$p, [string[]]$DeletedFileAncestors = @()) {
+    $script:destinationReason = ''
+    if (-not (Test-SafePath $p)) { $script:destinationReason = 'the path fails the safe-path rules'; return $false }
     $segments = $p -split '/'
     $current = $script:repo
     for ($i = 0; $i -lt $segments.Count; $i++) {
         $current = Join-Path $current $segments[$i]
+        $relative = ($segments[0..$i] -join '/')
         try {
             $item = Get-Item -LiteralPath $current -Force -ErrorAction Stop
         } catch {
-            # Only a genuinely absent path component permits stopping. Inspection errors fail closed.
+            # Only a genuinely absent path component permits stopping. Inspection errors fail closed and are reported as such.
             if ($_.CategoryInfo.Category -eq [Management.Automation.ErrorCategory]::ObjectNotFound) {
                 break
             }
+            $script:destinationReason = "could not inspect '$relative': $($_.Exception.Message)"
             return $false
         }
         if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            $script:destinationReason = "'$relative' is a junction or symbolic link"
             return $false
         }
         if ($i -lt ($segments.Count - 1) -and -not $item.PSIsContainer) {
+            # Nothing can exist beneath a file, so a file that the delivery deletes may be replaced by a directory.
+            if ($DeletedFileAncestors -contains $relative) { break }
+            $script:destinationReason = "'$relative' is a file, not a directory"
             return $false
         }
     }
@@ -231,10 +246,14 @@ foreach ($f in $required) {
     if ([string]::IsNullOrWhiteSpace($manifest.$f)) { Fail "Manifest field '$f' is missing." }
 }
 if ($manifest.baseCommit -notmatch '^[0-9a-f]{40}$') { Fail "Manifest baseCommit is not a full 40-character SHA." }
-if ($manifest.branch -notmatch '^ac[1-6]/[a-z0-9][a-z0-9-]*$') { Fail "Branch '$($manifest.branch)' does not match ac1..ac6/<short-task-name>." }
+if ($script:updateMode) {
+    # An existing PR branch keeps its own name (for example chore/<name>); it must still be a plain, safe ref name.
+    if ($manifest.branch -cnotmatch '^[a-z0-9][a-z0-9._/-]*$' -or $manifest.branch -cmatch '\.\.|//|/$|\.lock$|\.$') { Fail "Branch '$($manifest.branch)' is not a safe existing PR branch name." }
+} elseif ($manifest.branch -notmatch '^ac[1-6]/[a-z0-9][a-z0-9-]*$') { Fail "Branch '$($manifest.branch)' does not match ac1..ac6/<short-task-name>." }
 # One path form (forward slashes) for every later comparison.
 $files = @($manifest.files | ForEach-Object { "$_" -replace '\\', '/' })
 $deleted = @($manifest.deleted | ForEach-Object { "$_" -replace '\\', '/' })
+$script:deletedPaths = $deleted
 if ($files.Count + $deleted.Count -eq 0) { Fail "Manifest lists no files." }
 foreach ($p in ($files + $deleted)) {
     if (-not (Test-SafePath $p)) { Fail "Unsafe path in manifest: '$p'." }
@@ -388,8 +407,8 @@ $script:branchCreated = $true
 try {
     # Validate all targets before the first removal or copy.
     foreach ($p in ($files + $deleted)) {
-        if (-not (Test-SafeDestinationPath $p)) {
-            Fail "Manifest path '$p' has an existing reparse-point ancestor inside the clone. Refusing to follow junctions or symlinks."
+        if (-not (Test-SafeDestinationPath $p $deleted)) {
+            Fail "Manifest path '$p' failed the destination check: $($script:destinationReason). Refusing to continue."
         }
     }
     foreach ($p in $deleted) {
@@ -404,14 +423,14 @@ try {
     # Deletions first: a deleted file may block the directory that a new file needs (file replaced by a folder).
     foreach ($p in $deleted) {
         if (-not (Test-SafeDestinationPath $p)) {
-            Fail "Deletion path '$p' now has a reparse-point ancestor. Refusing to remove through it."
+            Fail "Deletion path '$p' failed the destination check: $($script:destinationReason). Refusing to remove through it."
         }
         Remove-Item -LiteralPath (Join-Path $script:repo ($p -replace '/', '\')) -Force
     }
     foreach ($p in $files) {
         $dst = Join-Path $script:repo ($p -replace '/', '\')
         if (-not (Test-SafeDestinationPath $p)) {
-            Fail "Destination '$p' now has a reparse-point ancestor. Refusing to copy through it."
+            Fail "Destination '$p' failed the destination check: $($script:destinationReason). Refusing to copy through it."
         }
         if (Test-Path -LiteralPath $dst -PathType Container) {
             Fail "Destination is an existing directory, not a file: $p"
@@ -461,10 +480,20 @@ Git-Do @('diff', '--cached', '--stat')
 Write-Host ""
 Git-Do @('commit', '-F', (Join-Path $pkg 'commit.txt'))
 $script:committed = $true
+# Capture the exact commit just made; later pushes send this ID, never the mutable branch name.
+$deliveryCommit = "$(Git-Try @('rev-parse', '--verify', 'HEAD'))".Trim()
+if ($script:rc -ne 0 -or $deliveryCommit -notmatch '^[0-9a-f]{40}$') { Fail "Could not read the delivery commit after git commit. Nothing was pushed." }
 if ($script:updateMode) {
     # The update is based on exactly baseCommit; the lease prevents recreating or replacing a moved/deleted PR ref.
+    $parentCommit = "$(Git-Try @('rev-parse', '--verify', "$deliveryCommit^"))".Trim()
+    if ($script:rc -ne 0 -or $parentCommit -ne $manifest.baseCommit) {
+        Fail "Delivery commit $deliveryCommit is not directly on $($manifest.baseCommit) (parent: $parentCommit). Nothing was pushed; inspect the clone."
+    }
     $expectedRemoteRef = "refs/heads/$($manifest.branch):$($manifest.baseCommit)"
-    Git-Do @('push', "--force-with-lease=$expectedRemoteRef", '-u', 'origin', $manifest.branch)
+    Git-Do @('push', "--force-with-lease=$expectedRemoteRef", 'origin', "${deliveryCommit}:refs/heads/$($manifest.branch)")
+    # Tracking is set only after the push succeeded.
+    $null = Git-Try @('branch', "--set-upstream-to=origin/$($manifest.branch)", $manifest.branch)
+    if ($script:rc -ne 0) { Write-Host "Pushed, but could not set upstream tracking for $($manifest.branch). Run: git branch --set-upstream-to=origin/$($manifest.branch)" -ForegroundColor Yellow }
 } else {
     Git-Do @('push', '-u', 'origin', $manifest.branch)
 }

@@ -239,7 +239,7 @@ artifact on failure. `e2e/` is excluded from SonarQube coverage (it contains tes
 
 ## Code base for an AI session
 
-The repository is public. Every AI session (accounts AC1 to AC5) takes the latest `main` itself: a shallow clone
+The repository is public. Every AI session (accounts AC1 to AC6) takes the latest `main` itself: a shallow clone
 (`git clone --depth 1 https://github.com/devan95/job-search-tracker`), or single files from
 `raw.githubusercontent.com/devan95/job-search-tracker/main/<path>`, and records the commit id as its base. No archive of
 the repository needs to be attached. The session never commits or pushes; it delivers changed files (see below).
@@ -288,6 +288,10 @@ does not undo those synchronization steps. A failure while applying files after 
 rollback attempt. The runner checks each rollback command and reports completion only when reset/cleanup and (for new mode)
 branch removal succeed. If it reports an incomplete rollback, inspect `git status` and restore the clone before retrying.
 
+A tracked file that the delivery deletes may be replaced by a directory of the same name (for example `config` becomes
+`config/settings.json`): deletions are validated first, and rollback tolerates the absent child. Destination inspection
+errors (for example permission problems) are reported with the failing path component and stop the run.
+
 Once the manifest-listed changes are applied, the runner verifies the resulting change set, commits, pushes and opens the PR
 (new mode) or updates the existing PR branch (update mode). It never force-pushes or merges. The branch-tip and post-commit
 push-recovery behavior is described below.
@@ -295,12 +299,13 @@ push-recovery behavior is described below.
 ### Update mode: fixing review comments on an open pull request
 
 When a pull request needs changes (for example after review comments), the delivery does not create a second branch or PR.
-Its `delivery-manifest.json` has `"mode": "update"`; `branch` is the existing PR branch and `baseCommit` is the exact
+Its `delivery-manifest.json` has `"mode": "update"`; `branch` is the existing PR branch (it keeps its own safe name, for
+example `chore/<name>`; only new-mode branches must be `ac1`–`ac6/<task>`) and `baseCommit` is the exact
 tip of the PR branch when the delivery was prepared. The package includes `delivery-manifest.json`, `commit.txt`, the
 changed files and root-level `run-delivery.cmd`. After `git fetch origin`, the runner compares the local PR branch with
 the fetched `origin/<branch>` snapshot and fast-forwards when needed, then requires local `HEAD` to equal `baseCommit`.
-The runner also compares the live exact remote ref to `baseCommit` before applying files. The update push uses
-`--force-with-lease=refs/heads/<branch>:<baseCommit>`: it only publishes the intended descendant when the remote ref
+The runner also compares the live exact remote ref to `baseCommit` before applying files. The update push sends the commit ID captured right after `git commit` (its parent must be `baseCommit`), not the mutable
+local branch name, and uses `--force-with-lease=refs/heads/<branch>:<baseCommit>`: it only publishes the intended descendant when the remote ref
 still exists at that exact base. If another push moves the ref or the ref is deleted before the update push, the lease
 fails rather than overwriting or recreating the PR branch. This is still a point-in-time protocol; a changed ref must
 be inspected and the delivery rebuilt. The runner never force-pushes to a different tip. On success the existing PR
@@ -322,8 +327,9 @@ Exit code 2 means no matching ref; any other non-zero exit code is a query failu
 - If the exact remote branch still points to `baseCommit`, the local branch is clean, and the retained delivery commit is
   the **only** commit after `baseCommit` (`git rev-list --count <baseCommit>..HEAD` returns `1` and
   `git merge-base --is-ancestor <baseCommit> HEAD` succeeds), retry with
-  `git push --force-with-lease=refs/heads/<branch>:<baseCommit> origin <branch>`. The ancestry and one-commit checks
-  ensure the local update is a fast-forward from `baseCommit`. The explicit expected-tip lease makes the retry fail if
+  `git push --force-with-lease=refs/heads/<branch>:<baseCommit> origin <commitId>:refs/heads/<branch>`, where
+  `<commitId>` is the delivery commit recorded by those checks (`git rev-parse --verify HEAD`); never push the mutable
+  branch name. The ancestry and one-commit checks ensure the update is a fast-forward from `baseCommit`. The explicit expected-tip lease makes the retry fail if
   the remote ref was deleted or moved after inspection, rather than unintentionally recreating or replacing it. Do not
   use a plain push for this race-sensitive retry.
 - If the exact remote branch exists at any other commit, stop and compare the histories. Do not force-push; reconcile the
