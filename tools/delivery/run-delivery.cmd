@@ -214,6 +214,9 @@ if ($helperInManifest.Count -gt 0) {
     Fail "Package helper(s) must not appear in manifest.files or manifest.deleted: $($helperInManifest -join ', ')"
 }
 
+foreach ($h in $helpers) {
+    if (-not (Test-Path -LiteralPath (Join-Path $pkg $h))) { Fail "Delivery file missing: $h" }
+}
 # Reject short-name aliases that resolve to a package helper as well as the long filename.
 $packageHelperNames = @{}
 foreach ($h in $helpers) {
