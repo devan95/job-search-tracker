@@ -71,8 +71,8 @@ public class ApplicationDataModelTests : DatabaseTestBase
         var (candidate, job) = await AddCandidateAndJobAsync();
         await AddApplicationAsync(candidate, job);
 
-        Assert.Equal(ForeignKeyViolation, await SqlStateOfAsync(() => Db.ExecuteAsync($"DELETE FROM jobs WHERE \"Id\" = '{job.Id}'")));
-        Assert.Equal(ForeignKeyViolation, await SqlStateOfAsync(() => Db.ExecuteAsync($"DELETE FROM candidates WHERE \"Id\" = '{candidate.Id}'")));
+        AssertDeleteBlocked(await SqlStateOfAsync(() => Db.ExecuteAsync($"DELETE FROM jobs WHERE \"Id\" = '{job.Id}'")));
+        AssertDeleteBlocked(await SqlStateOfAsync(() => Db.ExecuteAsync($"DELETE FROM candidates WHERE \"Id\" = '{candidate.Id}'")));
     }
 
     [Theory]
@@ -138,7 +138,7 @@ public class ApplicationDataModelTests : DatabaseTestBase
 
         var state = await SqlStateOfAsync(() => Db.ExecuteAsync($"DELETE FROM applications WHERE \"Id\" = '{application.Id}'"));
 
-        Assert.Equal(ForeignKeyViolation, state);
+        AssertDeleteBlocked(state);
     }
 
     [Theory]

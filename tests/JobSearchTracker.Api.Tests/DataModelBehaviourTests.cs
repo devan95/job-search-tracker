@@ -194,7 +194,7 @@ public class DataModelBehaviourTests : DatabaseTestBase
             await ctx.SaveChangesAsync();
         }
 
-        Assert.Equal(ForeignKeyViolation, await SqlStateOfAsync(() =>
+        AssertDeleteBlocked(await SqlStateOfAsync(() =>
             Db.ExecuteAsync($"DELETE FROM candidates WHERE \"Id\" = '{candidate.Id}'")));
     }
 
@@ -272,7 +272,7 @@ public class DataModelBehaviourTests : DatabaseTestBase
             await ctx.SaveChangesAsync();
         }
 
-        Assert.Equal(ForeignKeyViolation, await SqlStateOfAsync(() =>
+        AssertDeleteBlocked(await SqlStateOfAsync(() =>
             Db.ExecuteAsync($"DELETE FROM company_lists WHERE \"Id\" = '{list.Id}'")));
     }
 
@@ -288,7 +288,7 @@ public class DataModelBehaviourTests : DatabaseTestBase
             await ctx.SaveChangesAsync();
         }
 
-        Assert.Equal(ForeignKeyViolation, await SqlStateOfAsync(() =>
+        AssertDeleteBlocked(await SqlStateOfAsync(() =>
             Db.ExecuteAsync($"DELETE FROM employers WHERE \"Id\" = '{employer.Id}'")));
 
         await Db.ExecuteAsync($"DELETE FROM company_list_employers WHERE \"EmployerId\" = '{employer.Id}'");

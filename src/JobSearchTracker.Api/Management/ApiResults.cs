@@ -80,8 +80,9 @@ internal static class DbErrors
     public static bool IsUniqueViolation(DbUpdateException ex) =>
         ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation };
 
+    /// <summary>Also true for 23001: PostgreSQL 18 reports a blocked ON DELETE RESTRICT delete with that code instead of 23503.</summary>
     public static bool IsForeignKeyViolation(DbUpdateException ex) =>
-        ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.ForeignKeyViolation };
+        ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.ForeignKeyViolation or PostgresErrorCodes.RestrictViolation };
 
     /// <summary>Name of the violated constraint or unique index, when PostgreSQL reports one.</summary>
     public static string? ConstraintName(DbUpdateException ex) =>
