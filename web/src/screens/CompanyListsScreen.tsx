@@ -13,6 +13,7 @@ import {
   type Employer,
   type WorkMode,
 } from '../api'
+import { CompanyImport } from '../components/CompanyImport'
 import { ProblemAlert } from '../components/ProblemAlert'
 import { WorkModeChecks } from '../components/WorkModeFields'
 import { useAction, useLoad } from '../hooks'
@@ -230,6 +231,14 @@ function ListDetail({ listId, onChanged, onDeleted }: DetailProps) {
           ))}
         </ul>
       )}
+
+      <CompanyImport
+        listId={listId}
+        onChanged={() => {
+          load.reload()
+          onChanged()
+        }}
+      />
 
       <h4>Delete list</h4>
       <p className="hint">Deleting a list keeps its companies. A list that a search profile selects cannot be deleted.</p>

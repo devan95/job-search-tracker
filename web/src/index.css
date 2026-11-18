@@ -70,6 +70,11 @@ select {
   padding: 0.35rem 0.5rem;
 }
 
+textarea {
+  font: inherit;
+  padding: 0.35rem 0.5rem;
+}
+
 button {
   font: inherit;
   padding: 0.35rem 0.75rem;
@@ -107,6 +112,16 @@ button:disabled {
 
 .rows.cards > li {
   display: block;
+}
+
+.rows.cards > li.invalid {
+  border-color: #b00020;
+}
+
+.rows.cards .row-name,
+.rows.cards .meta {
+  display: block;
+  overflow-wrap: anywhere;
 }
 
 .row-button {
@@ -158,7 +173,8 @@ button:disabled {
     color: #ff8a9b;
   }
 
-  .problem {
+  .problem,
+  .rows.cards > li.invalid {
     border-color: #ff8a9b;
   }
 }
