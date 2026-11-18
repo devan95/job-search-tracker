@@ -39,8 +39,13 @@ List endpoints take `skip` (default 0) and `take` (default 100, at most 500) and
 | `duplicate_requisition` | 409 | Same employer and requisition id as an existing job (`existingId`, `matchedOn`). Cannot be overridden |
 | `possible_duplicate` | 409 | Same canonical URL, or same employer + title + location (`existingId`, `matchedOn`). Resend with `confirmDifferentJob: true` if it is a different job |
 | `invalid_status_transition` | 409 | The job's current status does not allow the requested status (`currentStatus`, `requestedStatus`) |
-| `job_in_use` | 409 | Delete of a job that an application or source listing references (none exist yet) |
-| `concurrent_modification` | 409 | The job was changed or deleted by someone else while the request ran. Reload and retry |
+| `job_in_use` | 409 | Delete of a job that an application or source listing references |
+| `concurrent_modification` | 409 | The job or application was changed or deleted by someone else while the request ran. Reload and retry |
+| `candidate_has_applications` | 409 | Delete of a candidate that still has applications (`applicationCount`) |
+| `application_exists` | 409 | The candidate already has an application for this job (`existingId`, `status`, `isApplied`, `appliedAtUtc`) |
+| `invalid_application_transition` | 409 | The application's status does not allow the requested status (`currentStatus`, `requestedStatus`) |
+| `already_applied` / `not_applied` | 409 | Confirm of an application that is already applied; un-apply of one that is not |
+| `invalid_correction` | 409 | The correction would leave an inconsistent state or change nothing |
 
 Work modes are arrays of `remote`, `onSite`, `hybrid` (case-insensitive on input; repeated values count once).
 
@@ -221,6 +226,53 @@ or expired is the archive for jobs that have an application. `DELETE /employers/
 **Concurrency.** Status changes, updates and deletes are version-checked (PostgreSQL `xmin`): of two concurrent changes to the
 same job only one is saved and the other gets 409 `concurrent_modification`. `GET` and the response of a change read the job
 and its status history from one snapshot.
+
+### Applications
+
+Manual application tracking (Order 7; rules OQ-P1.8 and OQ-P1.9). There is one application per candidate and canonical job,
+whatever source the job came from. The user alone says that an application was submitted: creating, saving or preparing an
+application never marks it applied. Phase 1 has no authentication, so every audit row's `actor` is `user`. There is no
+endpoint to delete an application or edit its audit trail.
+
+| Method and path | Body | Notes |
+| --- | --- | --- |
+| `POST /applications` | `{ "candidateId", "jobId" }` | 201 with a `saved` application that is not applied. Unknown ids are 400 field errors. 409 `application_exists` (with `existingId`, `status`, `isApplied`, `appliedAtUtc`) when the candidate already has one for the job |
+| `GET /applications?candidateId=&jobId=&status=&applied=&skip=&take=` | | Summaries (no audit trail), most recently updated first. Use `candidateId` + `jobId` to look up the existing application, for example for a repost warning |
+| `GET /applications/{id}` | | The application with its `auditTrail`, oldest first |
+| `POST /applications/{id}/status` | `{ "status", "reason"? }` | Ordinary status change, see below |
+| `POST /applications/{id}/confirm-applied` | `{ "confirmed": true, "appliedAtUtc"? }` | The explicit manual confirmation. `confirmed` must be `true`. `appliedAtUtc` defaults to now, may be earlier, and is 400 when in the future |
+| `POST /applications/{id}/unapply` | `{ "reason" }` | Removes the applied fact. Reason required (at most 500 characters) |
+| `POST /applications/{id}/correct` | `{ "status"?, "appliedAtUtc"?, "reason" }` | Audited correction. Reason required; at least one of `status` and `appliedAtUtc` |
+
+Responses carry `id`, `candidateId`, `job` (`id`, `title`, `employer`, `status`), `status`, `isApplied`, `method`, `appliedAtUtc`,
+`appliedConfirmedAtUtc`, `createdAtUtc`, `updatedAtUtc` and, on a single application, `auditTrail`. Each audit item has `action`,
+`actor`, `changedAtUtc`, `oldStatus`, `oldIsApplied`, `oldAppliedAtUtc`, `newStatus`, `newIsApplied`, `newAppliedAtUtc` and `reason`.
+Statuses: `saved`, `applied`, `pendingVerification`, `interview`, `offer`, `rejected`, `withdrawn`.
+
+**Status endpoint.** Accepts `pendingVerification`, `interview`, `offer`, `rejected` and `withdrawn` (`saved` and `applied` are 400:
+`applied` comes only from confirming, `saved` only from un-applying or a correction). Allowed moves: `pendingVerification` from
+`saved`; `interview` from `applied`; `offer` from `applied` or `interview`; `rejected` from `pendingVerification`, `applied`,
+`interview` or `offer`; `withdrawn` from any status except `withdrawn`. Anything else is 409 `invalid_application_transition`
+(`currentStatus`, `requestedStatus`). Rejected and withdrawn applications are reopened only by a correction.
+
+**Confirm applied.** Allowed while the application is not applied (`saved`, `pendingVerification`, or `rejected`/`withdrawn` that
+were never confirmed). `saved` and `pendingVerification` become `applied`; `rejected` and `withdrawn` keep their status. It stores
+`method: "manual"`, the time applied and, separately, the time of confirmation. An uncertain submission stays `pendingVerification`
+(not applied). Already applied is 409 `already_applied`.
+
+**Un-apply.** Clears the flag, method and both times. `applied`, `interview` and `offer` go back to `saved`; `rejected` and
+`withdrawn` keep their status. The old values stay in the audit row. Not applied is 409 `not_applied`.
+
+**Correct.** The new state must still make sense: `applied`, `interview` and `offer` need a confirmed application, `saved` and
+`pendingVerification` are not allowed on an applied one, and `appliedAtUtc` can only be corrected while applied (never into the
+future). Anything else, or a correction that changes nothing, is 409 `invalid_correction`. A rejected or withdrawn application is
+reopened by correcting its status.
+
+**Audit.** Every create, status change, confirmation, un-apply and correction appends one audit row in the same transaction as the
+change. Concurrent changes to one application are version-checked (`xmin`): the loser gets 409 `concurrent_modification`.
+
+Related conflict codes: 409 `candidate_has_applications` (`applicationCount`) on `DELETE /candidates/{id}`, and the existing 409
+`job_in_use` on `DELETE /jobs/{id}` now applies when an application exists.
 
 ## Examples
 

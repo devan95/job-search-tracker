@@ -43,6 +43,7 @@ api.MapEmployerEndpoints();
 api.MapCompanyListEndpoints();
 api.MapSearchProfileEndpoints();
 api.MapJobEndpoints();
+api.MapApplicationEndpoints();
 
 app.Run();
 

@@ -86,6 +86,12 @@ public static class CandidateEndpoints
             return CandidateHasProfiles(id, profileCount);
         }
 
+        var applicationCount = await db.Applications.CountAsync(a => a.CandidateId == id, ct);
+        if (applicationCount > 0)
+        {
+            return CandidateHasApplications(id, applicationCount);
+        }
+
         db.Candidates.Remove(candidate);
         try
         {
@@ -93,8 +99,10 @@ public static class CandidateEndpoints
         }
         catch (DbUpdateException ex) when (DbErrors.IsForeignKeyViolation(ex))
         {
-            // A profile was created between the check and the delete; the database restriction is the final word.
-            return CandidateHasProfiles(id, null);
+            // A profile or application was created between the check and the delete; the database restriction is the final word.
+            return DbErrors.ConstraintName(ex)?.StartsWith("FK_applications_", StringComparison.Ordinal) == true
+                ? CandidateHasApplications(id, null)
+                : CandidateHasProfiles(id, null);
         }
 
         return Results.NoContent();
@@ -106,4 +114,11 @@ public static class CandidateEndpoints
             "Candidate has search profiles",
             $"Candidate {id} still has search profiles. Delete the profiles first.",
             profileCount is null ? null : new Dictionary<string, object?> { ["searchProfileCount"] = profileCount });
+
+    private static IResult CandidateHasApplications(Guid id, int? applicationCount) =>
+        ApiResults.Conflict(
+            ApplicationEndpoints.CandidateHasApplicationsCode,
+            "Candidate has applications",
+            $"Candidate {id} still has applications, which are kept as an audit record and cannot be deleted.",
+            applicationCount is null ? null : new Dictionary<string, object?> { ["applicationCount"] = applicationCount });
 }
