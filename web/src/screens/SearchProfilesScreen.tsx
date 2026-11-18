@@ -227,7 +227,7 @@ function ProfilesLoaded({ candidates, lists, profiles, reload }: LoadedProps) {
 
   async function onCreate(values: ProfileValues): Promise<boolean> {
     const result = await createAction.run(() => createSearchProfile(values))
-    if (result.ok) reload()
+    if (result.ok) void reload()
     return result.ok
   }
 
@@ -267,7 +267,7 @@ function ProfilesLoaded({ candidates, lists, profiles, reload }: LoadedProps) {
   async function onDelete(profile: SearchProfile) {
     const result = await rowAction.run(() => deleteSearchProfile(profile.id))
     setConfirmingId(null)
-    if (result.ok) reload()
+    if (result.ok) void reload()
   }
 
   return (
@@ -424,9 +424,9 @@ export default function SearchProfilesScreen() {
 
   const failed = [candidates, lists, profiles].find((l) => l.state.kind === 'error')
   const reloadAll = () => {
-    candidates.reload()
-    lists.reload()
-    profiles.reload()
+    void candidates.reload()
+    void lists.reload()
+    void profiles.reload()
   }
 
   let body: ReactNode

@@ -126,7 +126,7 @@ function ListDetail({ listId, onChanged, onDeleted }: DetailProps) {
     const result = await action.run(() => updateCompanyList(listId, input))
     if (result.ok) {
       setNotice('List saved.')
-      load.reload()
+      void load.reload()
       onChanged()
     }
     return result.ok
@@ -154,7 +154,7 @@ function ListDetail({ listId, onChanged, onDeleted }: DetailProps) {
       setNotice(`Added ${employer.name}; it already existed as a company and was reused.`)
     }
     setEmployerName('')
-    load.reload()
+    void load.reload()
     onChanged()
   }
 
@@ -162,7 +162,7 @@ function ListDetail({ listId, onChanged, onDeleted }: DetailProps) {
     setNotice(null)
     const result = await action.run(() => removeEmployerFromList(listId, employer.id))
     if (result.ok) {
-      load.reload()
+      void load.reload()
       onChanged()
     }
   }
@@ -275,7 +275,7 @@ export default function CompanyListsScreen() {
     const result = await createAction.run(() => createCompanyList(input))
     if (result.ok) {
       setSelectedId(result.value.id)
-      reload()
+      void reload()
     }
     return result.ok
   }
@@ -340,7 +340,7 @@ export default function CompanyListsScreen() {
             // Only clear the selection if it is still the list that was deleted.
             const deletedId = selectedId
             setSelectedId((current) => (current === deletedId ? null : current))
-            reload()
+            void reload()
           }}
         />
       )}
