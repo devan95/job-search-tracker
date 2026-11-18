@@ -1,14 +1,15 @@
-import { useState, type FormEvent } from 'react'
+import { useId, useRef, useState, type FormEvent } from 'react'
 import {
   importCompanies,
   previewCompanyImport,
   type ImportPreview,
   type ImportResult,
+  type ImportRowStatus,
 } from '../api'
 import { useAction } from '../hooks'
 import { ProblemAlert } from './ProblemAlert'
 
-const STATUS_LABEL: Record<string, string> = {
+const STATUS_LABEL: Record<ImportRowStatus, string> = {
   new: 'New company',
   existing_employer: 'Existing company',
   already_in_list: 'Already in this list',
@@ -39,6 +40,8 @@ interface Props {
  */
 export function CompanyImport({ listId, onChanged }: Props) {
   const action = useAction()
+  const errorId = useId()
+  const textRef = useRef<HTMLTextAreaElement>(null)
   const [text, setText] = useState('')
   const [preview, setPreview] = useState<{ text: string; data: ImportPreview } | null>(null)
   const [textError, setTextError] = useState<string | null>(null)
@@ -58,6 +61,7 @@ export function CompanyImport({ listId, onChanged }: Props) {
     if (text.trim() === '') {
       setPreview(null)
       setTextError('Paste at least one company name, one per line.')
+      textRef.current?.focus()
       return
     }
     setTextError(null)
@@ -91,10 +95,12 @@ export function CompanyImport({ listId, onChanged }: Props) {
         <label>
           Companies to import (one per line)
           <textarea
+            ref={textRef}
             rows={8}
             value={text}
             onChange={(e) => onTextChange(e.target.value)}
             aria-invalid={textError !== null}
+            aria-describedby={textError ? errorId : undefined}
             disabled={action.busy}
           />
         </label>
@@ -102,7 +108,11 @@ export function CompanyImport({ listId, onChanged }: Props) {
           Each line is one company. Commas are part of the name, so “Acme, Inc.” is a single
           company. Blank lines are ignored. At most 1,000 companies per import.
         </p>
-        {textError && <p className="field-error">{textError}</p>}
+        {textError && (
+          <p id={errorId} className="field-error">
+            {textError}
+          </p>
+        )}
         <button type="submit" disabled={action.busy}>
           Preview import
         </button>
@@ -111,12 +121,17 @@ export function CompanyImport({ listId, onChanged }: Props) {
       {action.error && (
         <ProblemAlert error={action.error} subject="company list" onReload={onChanged} />
       )}
-      {result && <p role="status">{resultLine(result)}</p>}
+      {/* Two persistent polite live regions, so a screen reader announces each new text. */}
+      <p role="status" aria-label="Preview summary">
+        {preview ? summaryLine(preview.data) : ''}
+      </p>
+      <p role="status" aria-label="Import result">
+        {result ? resultLine(result) : ''}
+      </p>
 
       {preview && (
         <section aria-label="Import preview" className="stack">
           <h5>Preview</h5>
-          <p>{summaryLine(preview.data)}</p>
           <ul className="rows cards" aria-label="Preview rows">
             {preview.data.rows.map((row) => (
               <li key={row.rowNumber} className={row.status === 'invalid' ? 'invalid' : undefined}>
@@ -124,7 +139,7 @@ export function CompanyImport({ listId, onChanged }: Props) {
                   Row {row.rowNumber}: {row.name ?? row.input}
                 </span>
                 <span className="meta">
-                  {STATUS_LABEL[row.status] ?? row.status}. {row.message}
+                  {STATUS_LABEL[row.status]}. {row.message}
                 </span>
               </li>
             ))}

@@ -235,7 +235,7 @@ function ListDetail({ listId, onChanged, onDeleted }: DetailProps) {
       <CompanyImport
         listId={listId}
         onChanged={() => {
-          load.reload()
+          void load.reload()
           onChanged()
         }}
       />

@@ -250,6 +250,85 @@ describe('CompanyImport', () => {
     expect(await screen.findByText('Unreadable response')).toBeInTheDocument()
     expect(onChanged).not.toHaveBeenCalled()
   })
+
+  const withRow = (patch: Record<string, unknown>) => ({
+    ...previewBody,
+    rows: [{ ...previewBody.rows[0], ...patch }, ...previewBody.rows.slice(1)],
+  })
+  const withSummary = (patch: Record<string, unknown>) => ({
+    ...previewBody,
+    summary: { ...previewBody.summary, ...patch },
+  })
+
+  it.each([
+    ['an undefined status', withRow({ status: 'pending' })],
+    ['a status that is an object key', withRow({ status: '__proto__' })],
+    ['a zero row number', withRow({ rowNumber: 0 })],
+    ['a fractional row number', withRow({ rowNumber: 1.5 })],
+    ['a negative summary count', withSummary({ invalid: -1 })],
+    ['a fractional summary count', withSummary({ total: 4.5 })],
+  ])('treats a preview with %s as an unreadable response', async (_name, body) => {
+    mockApi({ [PREVIEW_URL]: { status: 200, body } })
+    const user = userEvent.setup()
+    render(<CompanyImport listId="l1" onChanged={vi.fn()} />)
+
+    await pasteAndPreview(user, 'Acme')
+
+    expect(await screen.findByText('Unreadable response')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Confirm import' })).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['a negative count', { ...saved, created: -1 }],
+    ['a fractional count', { ...saved, skipped: 0.5 }],
+  ])('treats a save answer with %s as an unreadable response', async (_name, body) => {
+    const onChanged = vi.fn()
+    mockApi({
+      [PREVIEW_URL]: { status: 200, body: previewBody },
+      [IMPORT_URL]: { status: 200, body },
+    })
+    const user = userEvent.setup()
+    render(<CompanyImport listId="l1" onChanged={onChanged} />)
+
+    await pasteAndPreview(user)
+    await user.click(await screen.findByRole('button', { name: 'Confirm import' }))
+
+    expect(await screen.findByText('Unreadable response')).toBeInTheDocument()
+    expect(onChanged).not.toHaveBeenCalled()
+  })
+
+  it('links the blank-text error to the textarea and moves focus there', async () => {
+    mockApi({})
+    const user = userEvent.setup()
+    render(<CompanyImport listId="l1" onChanged={vi.fn()} />)
+
+    await user.click(screen.getByRole('button', { name: 'Preview import' }))
+
+    const box = screen.getByLabelText('Companies to import (one per line)')
+    expect(box).toHaveFocus()
+    expect(box).toBeInvalid()
+    expect(box).toHaveAccessibleDescription('Paste at least one company name, one per line.')
+  })
+
+  it('announces the preview summary and the save result in separate live regions', async () => {
+    mockApi({
+      [PREVIEW_URL]: { status: 200, body: previewBody },
+      [IMPORT_URL]: { status: 200, body: saved },
+    })
+    const user = userEvent.setup()
+    render(<CompanyImport listId="l1" onChanged={vi.fn()} />)
+
+    const summary = screen.getByRole('status', { name: 'Preview summary' })
+    const outcome = screen.getByRole('status', { name: 'Import result' })
+    expect(summary).toBeEmptyDOMElement()
+    expect(outcome).toBeEmptyDOMElement()
+
+    await pasteAndPreview(user)
+    await user.click(await screen.findByRole('button', { name: 'Confirm import' }))
+
+    expect(await screen.findByText(/Import saved: 1 created/)).toBe(outcome)
+    expect(summary).toBeEmptyDOMElement()
+  })
 })
 
 describe('company list screen with the import', () => {

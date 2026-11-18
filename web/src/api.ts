@@ -331,8 +331,23 @@ export interface ImportResult {
   skipped: number
 }
 
+/** A count from the API: a whole number, never negative. */
 const isCount = (value: unknown): value is number =>
-  typeof value === 'number' && Number.isFinite(value)
+  typeof value === 'number' && Number.isInteger(value) && value >= 0
+
+/** A 1-based row number. */
+const isRowNumber = (value: unknown): value is number => isCount(value) && value >= 1
+
+const IMPORT_ROW_STATUSES: readonly string[] = [
+  'new',
+  'existing_employer',
+  'already_in_list',
+  'duplicate_in_input',
+  'invalid',
+]
+
+const isImportRowStatus = (value: unknown): value is ImportRowStatus =>
+  typeof value === 'string' && IMPORT_ROW_STATUSES.includes(value)
 
 const unexpectedResponse = (): ApiError =>
   new ApiError('invalid_response', 'The API returned an unexpected response.')
@@ -358,9 +373,9 @@ function readImportPreview(data: unknown): ImportPreview {
   const rows = data.rows.map((row: unknown): ImportPreviewRow => {
     if (
       !isRecord(row) ||
-      !isCount(row.rowNumber) ||
+      !isRowNumber(row.rowNumber) ||
       typeof row.input !== 'string' ||
-      typeof row.status !== 'string'
+      !isImportRowStatus(row.status)
     ) {
       throw unexpectedResponse()
     }
@@ -369,9 +384,9 @@ function readImportPreview(data: unknown): ImportPreview {
       input: row.input,
       name: textOrNull(row.name),
       normalizedName: textOrNull(row.normalizedName),
-      status: row.status as ImportRowStatus,
+      status: row.status,
       existingEmployerId: textOrNull(row.existingEmployerId),
-      duplicateOfRow: isCount(row.duplicateOfRow) ? row.duplicateOfRow : null,
+      duplicateOfRow: isRowNumber(row.duplicateOfRow) ? row.duplicateOfRow : null,
       message: typeof row.message === 'string' ? row.message : '',
     }
   })
