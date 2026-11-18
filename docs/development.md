@@ -259,39 +259,47 @@ tree, then:
 
 ## Applying a delivery with the runner (Windows)
 
-`tools/delivery/run-delivery.cmd` automates the manual procedure above. A delivery is a folder with only the changed and
-added files at their repo paths, plus `delivery-manifest.json` (base commit, branch, commit subject, PR title, `files`,
-`deleted`), `commit.txt`, `pr-title.txt` and `pr.txt`. If it arrives as a ZIP, extract it outside the clone first. The
-runner is kept in the repository, not in the delivery.
+Every implementation ZIP is self-contained. In addition to the changed/added files at their exact repository paths and the
+manifest/text files, it contains a copy of `tools/delivery/run-delivery.cmd` at the ZIP root as `run-delivery.cmd`.
+The root copy is a launcher only: it is not listed in `delivery-manifest.json` and is not copied or staged into the clone.
+The checked-in source remains `tools/delivery/run-delivery.cmd`.
 
-1. Put the delivery folder outside the clone.
-2. Run `tools\delivery\run-delivery.cmd` and either drag the delivery folder onto it or paste the folder path when asked.
-3. The script runs without a confirmation prompt. It stops, without changing anything, when:
-   - Git or `gh` is missing, or `gh` is not authenticated;
-   - the manifest or a path is invalid or unsafe, or the folder contains a file that is not in the manifest;
-   - the clone has uncommitted changes, or the current branch has commits that are not pushed;
-   - local `main` is ahead of or diverged from `origin/main`;
-   - the manifest base commit is not the current `origin/main`, or the target branch already exists.
-4. Otherwise it fetches `origin`, switches to `main` (fast-forward only), creates the branch from `origin/main`, applies and
-   stages only the manifest-listed files, checks that the change set is exactly the manifest, commits with `commit.txt`,
-   pushes the branch and opens the pull request to `main` with `pr-title.txt` and `pr.txt`. It never force-pushes or merges.
-   A failure before the commit removes the new branch again.
+For a new PR delivery, the package contains:
+- changed/added repository files (complete files at their repository paths);
+- `delivery-manifest.json`, `commit.txt`, `pr-title.txt` and `pr.txt`;
+- root-level `run-delivery.cmd`.
+
+For an update to an existing PR, the package contains:
+- changed/added repository files (complete files at their repository paths);
+- `delivery-manifest.json` and `commit.txt`;
+- root-level `run-delivery.cmd` (no `pr-title.txt` or `pr.txt`).
+
+Extract the ZIP outside the repository clone and double-click the root-level `run-delivery.cmd`. It auto-detects its own
+package folder. No manual copy from the clone and no separate runner path are needed. The runner checks Git and authenticated
+GitHub CLI, validates the manifest, all paths and the packaged launcher, and rejects extra files. It stops, without changing
+anything, when the manifest/path is invalid or unsafe, the working tree is dirty, the current branch cannot be left safely,
+local `main` is ahead of or diverged from `origin/main`, the base SHA is stale, or the target branch already exists.
+Otherwise it fetches `origin`, switches to `main` (fast-forward only), creates the branch, applies and stages only the
+manifest-listed paths, verifies the resulting change set, commits, pushes and opens the PR (new mode) or updates the existing
+PR branch (update mode). It never force-pushes or merges. A failure before commit rolls back the files/branch safely.
 
 ### Update mode: fixing review comments on an open pull request
 
 When a pull request needs changes (for example after review comments), the delivery does not create a second branch or PR.
-Its `delivery-manifest.json` has `"mode": "update"`; `branch` is the existing PR branch and `baseCommit` is the exact commit
-at the tip of that branch that the delivery was built on. The folder needs only `delivery-manifest.json`, `commit.txt` and
-the changed files (no `pr.txt` or `pr-title.txt`). Run the same script the same way. It stops, without changing anything, when:
+Its `delivery-manifest.json` has `"mode": "update"`; `branch` is the existing PR branch and `baseCommit` is the exact
+commit at the tip of that branch that the delivery was built on. The package includes only `delivery-manifest.json`,
+`commit.txt`, the changed files and root-level `run-delivery.cmd`. The runner checks that the remote branch exists and
+that its tip still equals `baseCommit`; otherwise it stops and asks for a rebuilt delivery. On success it applies only the
+manifest-listed files, commits and pushes without force; the existing PR updates automatically.
 
-- the remote branch does not exist, or the local copy of the branch is ahead of or diverged from `origin`;
-- the branch tip is not `baseCommit` (the branch moved since the delivery was built: ask for a rebuilt delivery);
-- any of the checks above fails (clean tree, safe paths, change set equals the manifest).
+### PR review comment replies and resolution
 
-Otherwise it checks out the branch (creating it from `origin/<branch>` when it is not local yet), applies and stages only the
-manifest-listed files, commits with `commit.txt`, pushes the branch (never force) and prints the existing pull request address.
-A failure before the commit restores the working tree and keeps the branch.
-
+For inline review threads, reply on the original thread after the fix is pushed and verified. Resolve only when the requested
+change is fully addressed and verified (or the thread is genuinely obsolete/no longer actionable and the reply explains why).
+For partial fixes, failed checks, unresolved questions or blockers, reply with what remains and leave the thread open.
+Use the authenticated GitHub CLI to inspect the review thread, reply to its root comment, and resolve by GraphQL thread ID;
+the exact commands and evidence rules are in [the Agent Operating Model](agent-operating-model.md#5-pr-review-comments-reply-then-resolve-or-keep-open).
+Never mark a thread resolved just because a reply was posted.
 The clone path defaults to `C:\Users\Devan Shah\Repo\job-search-tracker`. When that path is not a clone the script asks once and
 saves the answer in `%LOCALAPPDATA%\job-search-tracker-delivery.json` (local only, never committed). The `JOBSEARCH_REPO`
 environment variable overrides it. If the script stops, do not copy files by hand: fix the cause and run it again.
