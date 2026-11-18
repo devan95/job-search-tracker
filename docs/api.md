@@ -42,7 +42,7 @@ List endpoints take `skip` (default 0) and `take` (default 100, at most 500) and
 | `job_in_use` | 409 | Delete of a job that an application or source listing references |
 | `concurrent_modification` | 409 | The job or application was changed or deleted by someone else while the request ran. Reload and retry |
 | `candidate_has_applications` | 409 | Delete of a candidate that still has applications (`applicationCount`) |
-| `application_exists` | 409 | The candidate already has an application for this job (`existingId`, `status`, `isApplied`, `appliedAtUtc`) |
+| `application_exists` | 409 | The candidate already has an application for this job (`existingId`, `currentStatus`, `isApplied`, `appliedAtUtc`) |
 | `invalid_application_transition` | 409 | The application's status does not allow the requested status (`currentStatus`, `requestedStatus`) |
 | `already_applied` / `not_applied` | 409 | Confirm of an application that is already applied; un-apply of one that is not |
 | `invalid_correction` | 409 | The correction would leave an inconsistent state or change nothing |
@@ -236,7 +236,7 @@ endpoint to delete an application or edit its audit trail.
 
 | Method and path | Body | Notes |
 | --- | --- | --- |
-| `POST /applications` | `{ "candidateId", "jobId" }` | 201 with a `saved` application that is not applied. Unknown ids are 400 field errors. 409 `application_exists` (with `existingId`, `status`, `isApplied`, `appliedAtUtc`) when the candidate already has one for the job |
+| `POST /applications` | `{ "candidateId", "jobId" }` | 201 with a `saved` application that is not applied. Unknown ids are 400 field errors. 409 `application_exists` (with `existingId`, `currentStatus`, `isApplied`, `appliedAtUtc`; not `status`, which is the HTTP status) when the candidate already has one for the job |
 | `GET /applications?candidateId=&jobId=&status=&applied=&skip=&take=` | | Summaries (no audit trail), most recently updated first. Use `candidateId` + `jobId` to look up the existing application, for example for a repost warning |
 | `GET /applications/{id}` | | The application with its `auditTrail`, oldest first |
 | `POST /applications/{id}/status` | `{ "status", "reason"? }` | Ordinary status change, see below |

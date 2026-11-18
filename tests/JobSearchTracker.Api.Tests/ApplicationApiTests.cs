@@ -6,8 +6,17 @@ namespace JobSearchTracker.Api.Tests;
 /// <summary>Order 7: manual application tracking, manual confirmation of Applied, corrections and the audit trail over HTTP.</summary>
 public class ApplicationApiTests : ApiTestBase
 {
-    private async Task<Guid> NewJobAsync(string employer = "Acme", string title = "Backend Engineer", string? url = null)
+    private int _jobCounter;
+
+    /// <summary>
+    /// Without explicit values every call creates a distinct job, because the same employer + title + location is a duplicate
+    /// (409). Tests that exercise duplicate detection pass explicit values.
+    /// </summary>
+    private async Task<Guid> NewJobAsync(string? employer = null, string? title = null, string? url = null)
     {
+        var number = Interlocked.Increment(ref _jobCounter);
+        employer ??= "Acme";
+        title ??= $"Backend Engineer {number}";
         var reply = await PostAsync("/api/jobs", new { employer, title, applyUrl = url });
         Assert.Equal(HttpStatusCode.Created, reply.Status);
         return reply.Id;
@@ -104,7 +113,7 @@ public class ApplicationApiTests : ApiTestBase
 
         AssertProblem(second, HttpStatusCode.Conflict, "application_exists");
         Assert.Equal(first.Id, second.Body.GetProperty("existingId").GetGuid());
-        Assert.Equal("applied", second.Body.GetProperty("status").GetString());
+        Assert.Equal("applied", second.Body.GetProperty("currentStatus").GetString());
         Assert.True(second.Body.GetProperty("isApplied").GetBoolean());
         var list = await GetAsync($"/api/applications?candidateId={candidateId}&jobId={jobId}");
         Assert.Equal(1, list.Count);

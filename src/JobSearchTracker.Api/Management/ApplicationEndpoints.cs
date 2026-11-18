@@ -183,9 +183,10 @@ public static class ApplicationEndpoints
             errors.Add("confirmed", "Applied needs an explicit confirmation that the application was submitted: send confirmed: true.");
         }
 
-        var now = DateTimeOffset.UtcNow;
-        var appliedAt = request?.AppliedAtUtc?.ToUniversalTime() ?? now;
-        if (appliedAt > now)
+        // Validation uses the clock at request time. The timestamps that are stored are read inside the change callback,
+        // after the row is loaded, so the audit order follows the order in which changes are really applied.
+        var requestedAt = request?.AppliedAtUtc?.ToUniversalTime();
+        if (requestedAt > DateTimeOffset.UtcNow)
         {
             errors.Add("appliedAtUtc", "The date and time applied cannot be in the future.");
         }
@@ -206,7 +207,8 @@ public static class ApplicationEndpoints
                     new Dictionary<string, object?> { ["appliedAtUtc"] = application.AppliedAtUtc });
             }
 
-            return application.ConfirmApplied(appliedAt, now);
+            var now = DateTimeOffset.UtcNow;
+            return application.ConfirmApplied(requestedAt ?? now, now);
         });
     }
 
@@ -230,9 +232,8 @@ public static class ApplicationEndpoints
         var errors = new ValidationErrors();
         var status = JobInput.Choice(request?.Status, ApplicationStatuses.All, "status", "status", errors);
         var reason = Reason(request?.Reason, required: true, errors);
-        var now = DateTimeOffset.UtcNow;
         var appliedAt = request?.AppliedAtUtc?.ToUniversalTime();
-        if (appliedAt > now)
+        if (appliedAt > DateTimeOffset.UtcNow)
         {
             errors.Add("appliedAtUtc", "The date and time applied cannot be in the future.");
         }
@@ -270,7 +271,7 @@ public static class ApplicationEndpoints
                 return InvalidCorrection(id, "The correction does not change anything.");
             }
 
-            return application.Correct(newStatus, newAppliedAt, reason!, now);
+            return application.Correct(newStatus, newAppliedAt, reason!, DateTimeOffset.UtcNow);
         });
     }
 
@@ -362,7 +363,8 @@ public static class ApplicationEndpoints
             new Dictionary<string, object?>
             {
                 ["existingId"] = existing.Id,
-                ["status"] = existing.Status,
+                // Not "status": that is the reserved RFC 7807 member holding the numeric HTTP status.
+                ["currentStatus"] = existing.Status,
                 ["isApplied"] = existing.IsApplied,
                 ["appliedAtUtc"] = existing.AppliedAtUtc,
             });
