@@ -89,7 +89,7 @@ query($threadId: ID!, $cursor: String) {
     ... on PullRequestReviewThread {
       id
       comments(first: 100, after: $cursor) {
-        nodes { databaseId author { login } body path line originalLine url }
+        nodes { fullDatabaseId replyTo { fullDatabaseId } author { login } body path line originalLine url }
         pageInfo { hasNextPage endCursor }
       }
     }
@@ -101,7 +101,7 @@ For each page after the first, add `-F cursor=END_CURSOR_FROM_PREVIOUS_PAGE`. Do
 
 ### Reply to the root inline comment
 
-Use the `databaseId` of the root comment, not a reply:
+Use the `fullDatabaseId` decimal value of the root comment, not a reply. In the paginated comment query, the root is the comment whose `replyTo` is `null`; a reply has a non-null `replyTo`. Select it by this field, never by assuming the first returned comment is the root. Preserve the full decimal ID exactly; do not narrow it to a 32-bit integer:
 
 ```bash
 gh api repos/OWNER/REPO/pulls/PR_NUMBER/comments/COMMENT_ID/replies --method POST -f body="Fixed in COMMIT_SHA: describe the change and passing checks."
