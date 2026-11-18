@@ -11,6 +11,14 @@ namespace JobSearchTracker.Api.Tests;
 /// </summary>
 public class ManagementApiAcceptanceTests : ApiTestBase
 {
+    private static readonly string[] Remote = ["remote"];
+    private static readonly string[] OnSite = ["onSite"];
+    private static readonly string[] Hybrid = ["hybrid"];
+    private static readonly string[] RemoteThenOnSite = ["remote", "onSite"];
+    private static readonly string[] UnknownMode = ["moon base"];
+    private static readonly string[] MisspelledMode = ["office"];
+    private static readonly string[] MessyModes = [" ONSITE ", "OnSite", "REMOTE"];
+
     // AC1: consistent response and error semantics
 
     [Theory]
@@ -42,17 +50,21 @@ public class ManagementApiAcceptanceTests : ApiTestBase
             await CreateProfileAsync(candidateId, $"{name} profile");
         }
 
-        var employers = await GetAsync("/api/employers?skip=1&take=1");
-        var lists = await GetAsync("/api/company-lists?skip=1&take=1");
-        var profiles = await GetAsync("/api/search-profiles?skip=1&take=1");
+        var employers = await GetAsync("/api/employers?skip=1&take=2");
+        var lists = await GetAsync("/api/company-lists?skip=1&take=2");
+        var profiles = await GetAsync("/api/search-profiles?skip=1&take=2");
         var pastTheEnd = await GetAsync("/api/employers?skip=3&take=10");
 
-        Assert.Equal(1, employers.Count);
+        // Two items after the first: both names are asserted, so a reversed sort (Bravo, Alpha) would fail.
+        Assert.Equal(2, employers.Count);
         Assert.Equal("Bravo Co", employers[0].GetProperty("name").GetString());
-        Assert.Equal(1, lists.Count);
+        Assert.Equal("Charlie Co", employers[1].GetProperty("name").GetString());
+        Assert.Equal(2, lists.Count);
         Assert.Equal("Bravo list", lists[0].GetProperty("name").GetString());
-        Assert.Equal(1, profiles.Count);
+        Assert.Equal("Charlie list", lists[1].GetProperty("name").GetString());
+        Assert.Equal(2, profiles.Count);
         Assert.Equal("Bravo profile", profiles[0].GetProperty("name").GetString());
+        Assert.Equal("Charlie profile", profiles[1].GetProperty("name").GetString());
         Assert.Equal(0, pastTheEnd.Count);
     }
 
@@ -121,13 +133,13 @@ public class ManagementApiAcceptanceTests : ApiTestBase
     [Fact]
     public async Task Company_list_update_reports_every_invalid_field_together_and_changes_nothing()
     {
-        var id = await CreateListAsync("Stable list", "Surat", new[] { "remote" });
+        var id = await CreateListAsync("Stable list", "Surat", Remote);
 
         var reply = await PutAsync($"/api/company-lists/{id}", new
         {
             name = " ",
             locationLabel = new string('x', 201),
-            defaultWorkModes = new[] { "moon base" },
+            defaultWorkModes = UnknownMode,
         });
         var reread = await GetAsync($"/api/company-lists/{id}");
 
@@ -136,13 +148,13 @@ public class ManagementApiAcceptanceTests : ApiTestBase
         AssertInvalid(reply, "defaultWorkModes");
         Assert.Equal("Stable list", reread.Str("name"));
         Assert.Equal("Surat", reread.Str("locationLabel"));
-        Assert.Equal(new[] { "remote" }, reread.Strings("defaultWorkModes"));
+        Assert.Equal(Remote, reread.Strings("defaultWorkModes"));
     }
 
     [Fact]
     public async Task Profile_create_reports_every_invalid_field_together()
     {
-        var reply = await PostAsync("/api/search-profiles", new { name = " ", workModes = new[] { "moon base" } });
+        var reply = await PostAsync("/api/search-profiles", new { name = " ", workModes = UnknownMode });
 
         AssertInvalid(reply, "name");
         AssertInvalid(reply, "workModes");
@@ -157,7 +169,7 @@ public class ManagementApiAcceptanceTests : ApiTestBase
         var badMode = await PutAsync($"/api/search-profiles/{profileId}", new
         {
             name = "Stable profile",
-            workModes = new[] { "office" },
+            workModes = MisspelledMode,
             companyMonitoringEnabled = true,
             broadSearchEnabled = true,
         });
@@ -329,29 +341,29 @@ public class ManagementApiAcceptanceTests : ApiTestBase
     public async Task A_profile_that_inherits_follows_later_changes_to_its_lists_defaults_and_an_override_does_not()
     {
         var candidateId = await CreateCandidateAsync();
-        var listId = await CreateListAsync("Follow me", defaultWorkModes: new[] { "remote" });
+        var listId = await CreateListAsync("Follow me", defaultWorkModes: Remote);
         var inheriting = await PostAsync("/api/search-profiles", new { candidateId, name = "Inheriting", companyListIds = new[] { listId } });
-        var overriding = await PostAsync("/api/search-profiles", new { candidateId, name = "Overriding", companyListIds = new[] { listId }, workModes = new[] { "hybrid" } });
+        var overriding = await PostAsync("/api/search-profiles", new { candidateId, name = "Overriding", companyListIds = new[] { listId }, workModes = Hybrid });
 
-        var changed = await PutAsync($"/api/company-lists/{listId}", new { name = "Follow me", defaultWorkModes = new[] { "onSite" } });
+        var changed = await PutAsync($"/api/company-lists/{listId}", new { name = "Follow me", defaultWorkModes = OnSite });
         var inheritingAfter = await GetAsync($"/api/search-profiles/{inheriting.Id}");
         var overridingAfter = await GetAsync($"/api/search-profiles/{overriding.Id}");
 
         Assert.Equal(HttpStatusCode.OK, changed.Status);
         Assert.Equal(JsonValueKind.Null, inheritingAfter.Body.GetProperty("workModes").ValueKind);
         Assert.Equal(
-            new[] { "onSite" },
+            OnSite,
             inheritingAfter.Body.GetProperty("companyLists")[0].GetProperty("defaultWorkModes").EnumerateArray().Select(e => e.GetString()!).ToArray());
-        Assert.Equal(new[] { "hybrid" }, overridingAfter.Strings("workModes"));
+        Assert.Equal(Hybrid, overridingAfter.Strings("workModes"));
     }
 
     [Fact]
     public async Task Work_mode_names_are_trimmed_and_case_insensitive_and_repeated_names_count_once()
     {
-        var reply = await PostAsync("/api/company-lists", new { name = "Lenient", defaultWorkModes = new[] { " ONSITE ", "OnSite", "REMOTE" } });
+        var reply = await PostAsync("/api/company-lists", new { name = "Lenient", defaultWorkModes = MessyModes });
 
         Assert.Equal(HttpStatusCode.Created, reply.Status);
-        Assert.Equal(new[] { "remote", "onSite" }, reply.Strings("defaultWorkModes"));
+        Assert.Equal(RemoteThenOnSite, reply.Strings("defaultWorkModes"));
     }
 
     // AC5: both discovery flags may be false; no source catalog and no per-source enablement
