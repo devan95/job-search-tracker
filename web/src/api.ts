@@ -116,6 +116,14 @@ export interface Problem {
   existingId?: string
   searchProfileCount?: number
   companyListCount?: number
+  jobCount?: number
+  applicationCount?: number
+  /** `canonicalUrl`, `employerTitleLocation` or `requisitionId` on a duplicate job. */
+  matchedOn?: string
+  currentStatus?: string
+  requestedStatus?: string
+  isApplied?: boolean
+  appliedAtUtc?: string
 }
 
 export type ApiErrorKind = 'problem' | 'network' | 'invalid_response'
@@ -178,6 +186,13 @@ export async function readProblem(res: Response): Promise<Problem> {
   if (typeof rec.companyListCount === 'number') {
     problem.companyListCount = rec.companyListCount
   }
+  if (typeof rec.jobCount === 'number') problem.jobCount = rec.jobCount
+  if (typeof rec.applicationCount === 'number') problem.applicationCount = rec.applicationCount
+  if (typeof rec.matchedOn === 'string') problem.matchedOn = rec.matchedOn
+  if (typeof rec.currentStatus === 'string') problem.currentStatus = rec.currentStatus
+  if (typeof rec.requestedStatus === 'string') problem.requestedStatus = rec.requestedStatus
+  if (typeof rec.isApplied === 'boolean') problem.isApplied = rec.isApplied
+  if (typeof rec.appliedAtUtc === 'string') problem.appliedAtUtc = rec.appliedAtUtc
   return problem
 }
 
@@ -464,3 +479,228 @@ export const selectCompanyList = (profileId: string, listId: string): Promise<vo
 
 export const unselectCompanyList = (profileId: string, listId: string): Promise<void> =>
   request('DELETE', `/search-profiles/${id(profileId)}/company-lists/${id(listId)}`)
+
+// ---------------------------------------------------------------------------
+// Jobs and applications (docs/api.md, "Jobs" and "Applications"). Manual entry only.
+// ---------------------------------------------------------------------------
+
+export type JobStatus =
+  | 'new'
+  | 'open'
+  | 'closed'
+  | 'expired'
+  | 'reopened'
+  | 'unavailable'
+  | 'verificationPending'
+
+/** The statuses a user may request; `reopened` is "open again". */
+export type UserJobStatus = 'closed' | 'expired' | 'unavailable' | 'reopened'
+
+export type EmploymentType =
+  | 'fullTime'
+  | 'partTime'
+  | 'contract'
+  | 'internship'
+  | 'temporary'
+  | 'other'
+
+export interface JobEmployerRef {
+  id: string
+  name: string
+}
+
+export interface JobSummary {
+  id: string
+  employer: JobEmployerRef
+  title: string
+  applyUrl: string | null
+  location: string | null
+  workMode: WorkMode | null
+  employmentType: EmploymentType | null
+  status: JobStatus
+  createdVia: string
+  createdAtUtc: string
+  updatedAtUtc: string
+}
+
+export interface JobStatusChange {
+  fromStatus: string | null
+  toStatus: string
+  changedAtUtc: string
+}
+
+export interface Job extends JobSummary {
+  canonicalUrl: string | null
+  department: string | null
+  experienceMinYears: number | null
+  experienceMaxYears: number | null
+  requisitionId: string | null
+  /** yyyy-MM-dd */
+  postedDate: string | null
+  description: string | null
+  foundOn: string | null
+  statusHistory: JobStatusChange[]
+}
+
+/** Create and PUT share one body; PUT clears every optional field that is null. */
+export interface JobInput {
+  employer: string
+  title: string
+  applyUrl: string | null
+  location: string | null
+  workMode: WorkMode | null
+  employmentType: EmploymentType | null
+  department: string | null
+  experienceMinYears: number | null
+  experienceMaxYears: number | null
+  requisitionId: string | null
+  postedDate: string | null
+  description: string | null
+  foundOn: string | null
+  /** Overrides a `possible_duplicate` warning only; never a requisition id match. */
+  confirmDifferentJob: boolean
+}
+
+export interface JobFilters {
+  q?: string
+  status?: string
+}
+
+function query(params: Record<string, string | boolean | undefined>): string {
+  const search = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === '') continue
+    search.set(key, String(value))
+  }
+  search.set('take', '500')
+  return search.toString()
+}
+
+export const listJobs = (filters: JobFilters = {}): Promise<JobSummary[]> =>
+  requestList(`/jobs?${query({ q: filters.q?.trim(), status: filters.status })}`)
+
+export const getJob = (jobId: string): Promise<Job> => request('GET', `/jobs/${id(jobId)}`)
+
+export const createJob = (input: JobInput): Promise<Job> => request('POST', '/jobs', input)
+
+export const updateJob = (jobId: string, input: JobInput): Promise<Job> =>
+  request('PUT', `/jobs/${id(jobId)}`, input)
+
+export const changeJobStatus = (jobId: string, status: UserJobStatus): Promise<Job> =>
+  request('POST', `/jobs/${id(jobId)}/status`, { status })
+
+export const deleteJob = (jobId: string): Promise<void> =>
+  request('DELETE', `/jobs/${id(jobId)}`)
+
+export type ApplicationStatus =
+  | 'saved'
+  | 'applied'
+  | 'pendingVerification'
+  | 'interview'
+  | 'offer'
+  | 'rejected'
+  | 'withdrawn'
+
+export interface ApplicationJobRef {
+  id: string
+  title: string
+  employer: JobEmployerRef
+  status: JobStatus
+}
+
+export interface ApplicationSummary {
+  id: string
+  candidateId: string
+  job: ApplicationJobRef
+  status: ApplicationStatus
+  isApplied: boolean
+  /** `manual` once confirmed; null while not applied. */
+  method: string | null
+  appliedAtUtc: string | null
+  appliedConfirmedAtUtc: string | null
+  createdAtUtc: string
+  updatedAtUtc: string
+}
+
+export interface ApplicationAuditItem {
+  action: string
+  actor: string
+  changedAtUtc: string
+  oldStatus: string | null
+  oldIsApplied: boolean | null
+  oldAppliedAtUtc: string | null
+  newStatus: string
+  newIsApplied: boolean
+  newAppliedAtUtc: string | null
+  reason: string | null
+}
+
+export interface Application extends ApplicationSummary {
+  /** Oldest first. */
+  auditTrail: ApplicationAuditItem[]
+}
+
+export interface ApplicationFilters {
+  candidateId?: string
+  jobId?: string
+  status?: string
+}
+
+export const listApplications = (
+  filters: ApplicationFilters = {},
+): Promise<ApplicationSummary[]> =>
+  requestList(
+    `/applications?${query({
+      candidateId: filters.candidateId,
+      jobId: filters.jobId,
+      status: filters.status,
+    })}`,
+  )
+
+export const getApplication = (applicationId: string): Promise<Application> =>
+  request('GET', `/applications/${id(applicationId)}`)
+
+/** Saves an application for tracking. It starts as `saved` and is never applied. */
+export const createApplication = (
+  candidateId: string,
+  jobId: string,
+): Promise<Application> => request('POST', '/applications', { candidateId, jobId })
+
+/** Ordinary status change. `applied` and `saved` are not accepted here by the API. */
+export const changeApplicationStatus = (
+  applicationId: string,
+  status: ApplicationStatus,
+  reason?: string,
+): Promise<Application> =>
+  request('POST', `/applications/${id(applicationId)}/status`, { status, reason })
+
+/**
+ * The explicit manual confirmation that the user submitted the application. Callers must have
+ * asked the user; `appliedAtUtc` omitted means "now".
+ */
+export const confirmApplied = (
+  applicationId: string,
+  appliedAtUtc?: string,
+): Promise<Application> =>
+  request('POST', `/applications/${id(applicationId)}/confirm-applied`, {
+    confirmed: true,
+    appliedAtUtc,
+  })
+
+export const unapplyApplication = (
+  applicationId: string,
+  reason: string,
+): Promise<Application> =>
+  request('POST', `/applications/${id(applicationId)}/unapply`, { reason })
+
+export interface ApplicationCorrection {
+  status?: ApplicationStatus
+  appliedAtUtc?: string
+  reason: string
+}
+
+export const correctApplication = (
+  applicationId: string,
+  correction: ApplicationCorrection,
+): Promise<Application> =>
+  request('POST', `/applications/${id(applicationId)}/correct`, correction)

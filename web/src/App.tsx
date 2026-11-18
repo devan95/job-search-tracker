@@ -1,18 +1,23 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { fetchHealth, type HealthResult } from './api'
 import CandidatesScreen from './screens/CandidatesScreen'
+import ApplicationsScreen from './screens/ApplicationsScreen'
 import CompanyListsScreen from './screens/CompanyListsScreen'
+import JobsScreen from './screens/JobsScreen'
 import SearchProfilesScreen from './screens/SearchProfilesScreen'
 
 type ViewState = { kind: 'checking' } | HealthResult
 
-type Section = 'candidates' | 'lists' | 'profiles'
+type Section = 'candidates' | 'lists' | 'profiles' | 'jobs' | 'applications'
 
-// Setup order: a candidate, then company lists, then a search profile that ties them together.
+// Setup order: a candidate, then company lists, then a search profile that ties them together;
+// then the jobs entered by hand and the applications tracked for them.
 const SECTIONS: { id: Section; label: string }[] = [
   { id: 'candidates', label: 'Candidates' },
   { id: 'lists', label: 'Company lists' },
   { id: 'profiles', label: 'Search profiles' },
+  { id: 'jobs', label: 'Jobs' },
+  { id: 'applications', label: 'Applications' },
 ]
 
 const DATABASE_LABEL = {
@@ -66,8 +71,8 @@ export default function App() {
     <main className="app">
       <h1>Job Search &amp; Application Tracker</h1>
       <p className="subtitle">
-        Lists and profiles. Job discovery, matching and application tracking are
-        not built yet.
+        Lists, profiles, and jobs and applications you enter by hand. Job
+        discovery and matching are not built yet.
       </p>
 
       <div role="tablist" aria-label="Sections" className="tabs">
@@ -95,6 +100,8 @@ export default function App() {
         {section === 'candidates' && <CandidatesScreen />}
         {section === 'lists' && <CompanyListsScreen />}
         {section === 'profiles' && <SearchProfilesScreen />}
+        {section === 'jobs' && <JobsScreen />}
+        {section === 'applications' && <ApplicationsScreen />}
       </div>
 
       <section aria-labelledby="system-status">

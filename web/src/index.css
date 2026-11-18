@@ -168,6 +168,21 @@ button:disabled {
   margin: 0.25rem 0;
 }
 
+ol.history {
+  margin: 0.5rem 0 1rem;
+  padding-left: 1.25rem;
+}
+
+ol.history > li {
+  margin: 0.25rem 0;
+  overflow-wrap: anywhere;
+}
+
+.description {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 @media (prefers-color-scheme: dark) {
   .field-error {
     color: #ff8a9b;
