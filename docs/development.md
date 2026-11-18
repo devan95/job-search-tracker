@@ -136,6 +136,35 @@ the reports. No coverage threshold is enforced until a baseline has been measure
   (`sonar.javascript.lcov.reportPaths`). The job rewrites the `SF:` paths to start with `web/` before the analysis ends.
 - Both output folders (`coverage/` and `web/coverage/`) are git-ignored.
 
+## Quality Gate (SonarQube Cloud)
+
+The Quality Gate is a setting of the SonarQube Cloud project, not a file in this repository. The `SonarQube Cloud analysis` job
+only runs the analysis; SonarQube Cloud evaluates the gate and reports it on the pull request as its own check and decoration.
+The job does not wait for the gate (no `sonar.qualitygate.wait`), so a failed gate does not fail the CI job by itself.
+
+Gate for new code (the Clean as You Code period; the gate never judges the existing code base):
+
+| Condition | Threshold |
+| --- | --- |
+| Reliability rating on new code | A (no new bugs) |
+| Security rating on new code | A (no new vulnerabilities) |
+| Security hotspots reviewed on new code | 100% |
+| Maintainability rating on new code | A |
+| Duplicated lines on new code | at most 3% |
+| Coverage on new code | not a condition yet; add it (start at 60%) once the coverage baseline is measured |
+
+Rollout:
+
+1. **Advisory.** Keep the SonarQube Cloud check non-required in the branch ruleset. Review the first PR results for false
+   positives and for new-code period mistakes, and mark confirmed false positives in SonarQube Cloud instead of loosening conditions.
+2. **Validate pass and fail** on a throw-away branch, never on `main`: a trivial change passes; a change that adds an obvious
+   bug (for example an unused assignment that overwrites a value, or a hard-coded credential string) fails the reliability or
+   security condition, and the PR shows the failed check. Delete the branch afterwards.
+3. **Required.** Only after step 2 and a clean run on real PRs, mark the SonarQube Cloud check as required in the branch ruleset.
+
+The gate result is evidence only for what SonarQube analyzed (C# and TypeScript under `src/`, `tests/` and `web/`); it does not
+replace the build, lint, unit-test or e2e jobs.
+
 ## Management API
 
 Candidates, employers, company lists and search profiles are managed through `/api/...`; see [api.md](api.md) for the
