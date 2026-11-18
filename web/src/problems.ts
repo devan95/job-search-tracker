@@ -15,6 +15,21 @@ const count = (n: number | undefined, one: string, many: string): string => {
   return n === 1 ? `1 ${one}` : `${n} ${many}`
 }
 
+/** A status code such as `pendingVerification` as a sentence start: "Pending verification". */
+const statusName = (status: string | undefined): string =>
+  status ? humanizeField(status) : 'The current status'
+
+function duplicateReason(matchedOn: string | undefined): string {
+  switch (matchedOn) {
+    case 'canonicalUrl':
+      return 'A job with the same apply link already exists.'
+    case 'employerTitleLocation':
+      return 'A job with the same company, title and location already exists.'
+    default:
+      return 'A very similar job already exists.'
+  }
+}
+
 /** "defaultWorkModes" -> "Default work modes". */
 export function humanizeField(field: string): string {
   const spaced = field.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().trim()
@@ -112,6 +127,64 @@ export function describeError(error: ApiError, subject = 'item'): ProblemView {
       return view(
         'Company is still in a list',
         `This company is still in ${count(p.companyListCount, 'company list', 'company lists')}. Remove it from them first.`,
+      )
+    case 'employer_has_jobs':
+      return view(
+        'Company still has jobs',
+        `${count(p.jobCount, 'job', 'jobs')} still belong to this company. Close or delete them first.`,
+      )
+    case 'duplicate_requisition':
+      return view(
+        'Same requisition id',
+        'This company already has a job with the same requisition id, so this cannot be saved as a separate job. Open the existing job instead.',
+      )
+    case 'possible_duplicate':
+      return view('Possible duplicate job', `${duplicateReason(p.matchedOn)} If this is a different job, confirm it to save anyway.`)
+    case 'invalid_status_transition':
+    case 'invalid_application_transition':
+      return view(
+        'Status change not allowed',
+        `${statusName(p.currentStatus)} cannot be changed to ${statusName(p.requestedStatus).toLowerCase()}. Reload to see the current status.`,
+        { reloadable: true },
+      )
+    case 'job_in_use':
+      return view(
+        'Job is in use',
+        'An application or source listing still refers to this job, so it cannot be deleted. Mark it closed or expired to archive it.',
+      )
+    case 'candidate_has_applications':
+      return view(
+        'Candidate still has applications',
+        `${count(p.applicationCount, 'application', 'applications')} still belong to this candidate, so the candidate cannot be deleted.`,
+      )
+    case 'application_exists':
+      return view(
+        'Application already exists',
+        `This candidate already has an application for this job (${statusName(p.currentStatus).toLowerCase()}${p.isApplied ? ', applied' : ', not applied'}). Open it instead of creating another.`,
+        { reloadable: true },
+      )
+    case 'already_applied':
+      return view(
+        'Already applied',
+        'This application is already confirmed as applied. Reload to see its current state; use a correction to change the date.',
+        { reloadable: true },
+      )
+    case 'not_applied':
+      return view(
+        'Not applied',
+        'This application is not confirmed as applied, so there is nothing to remove. Reload to see its current state.',
+        { reloadable: true },
+      )
+    case 'invalid_correction':
+      return view(
+        'Correction not possible',
+        p.detail ?? 'The correction would leave an inconsistent state or change nothing.',
+      )
+    case 'concurrent_modification':
+      return view(
+        'Changed by someone else',
+        'This record was changed or deleted while your request ran. Reload to see its current state, then try again.',
+        { reloadable: true },
       )
     default:
       if (p.status >= 500) {

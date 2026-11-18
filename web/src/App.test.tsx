@@ -52,6 +52,12 @@ describe('App', () => {
 
     await user.click(screen.getByRole('tab', { name: 'Search profiles' }))
     expect(await screen.findByRole('heading', { name: 'Search profiles' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('tab', { name: 'Jobs' }))
+    expect(await screen.findByRole('heading', { name: 'Jobs' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('tab', { name: 'Applications' }))
+    expect(await screen.findByRole('heading', { name: 'Applications' })).toBeInTheDocument()
   })
 
   it('moves between the tabs with the arrow, Home and End keys', async () => {
@@ -67,13 +73,13 @@ describe('App', () => {
     expect(screen.getByRole('tab', { name: 'Candidates' })).toHaveAttribute('tabindex', '-1')
 
     await user.keyboard('{End}')
-    expect(screen.getByRole('tab', { name: 'Search profiles' })).toHaveFocus()
+    expect(screen.getByRole('tab', { name: 'Applications' })).toHaveFocus()
 
     await user.keyboard('{ArrowRight}')
     expect(screen.getByRole('tab', { name: 'Candidates' })).toHaveFocus()
 
     await user.keyboard('{ArrowLeft}')
-    expect(screen.getByRole('tab', { name: 'Search profiles' })).toHaveFocus()
+    expect(screen.getByRole('tab', { name: 'Applications' })).toHaveFocus()
 
     await user.keyboard('{Home}')
     expect(screen.getByRole('tab', { name: 'Candidates' })).toHaveFocus()
