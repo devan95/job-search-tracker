@@ -42,7 +42,7 @@ export default function CandidatesScreen() {
     const result = await createAction.run(() => createCandidate(name.trim()))
     if (result.ok) {
       setName('')
-      reload()
+      void reload()
     }
   }
 
@@ -65,7 +65,7 @@ export default function CandidatesScreen() {
     if (result.ok) {
       // The user may have moved on to another candidate's editor while this was saving.
       setEditingId((current) => (current === candidate.id ? null : current))
-      reload()
+      void reload()
     }
   }
 
@@ -75,7 +75,7 @@ export default function CandidatesScreen() {
     const result = await rowAction.run(() => deleteCandidate(candidate.id))
     // A conflict or error is shown above the list; the row stays as it is.
     setConfirmingId(null)
-    if (result.ok) reload()
+    if (result.ok) void reload()
   }
 
   return (
