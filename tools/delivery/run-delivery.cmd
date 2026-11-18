@@ -157,10 +157,14 @@ function Test-SafeDestinationPath([string]$p) {
     $current = $script:repo
     for ($i = 0; $i -lt $segments.Count; $i++) {
         $current = Join-Path $current $segments[$i]
-        $item = Get-Item -LiteralPath $current -Force -ErrorAction SilentlyContinue
-        if ($null -eq $item) {
-            # If this component is absent, no deeper existing component can be reached through it.
-            break
+        try {
+            $item = Get-Item -LiteralPath $current -Force -ErrorAction Stop
+        } catch {
+            # Only a genuinely absent path component permits stopping. Inspection errors fail closed.
+            if ($_.CategoryInfo.Category -eq [Management.Automation.ErrorCategory]::ObjectNotFound) {
+                break
+            }
+            return $false
         }
         if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
             return $false
@@ -457,7 +461,13 @@ Git-Do @('diff', '--cached', '--stat')
 Write-Host ""
 Git-Do @('commit', '-F', (Join-Path $pkg 'commit.txt'))
 $script:committed = $true
-Git-Do @('push', '-u', 'origin', $manifest.branch)
+if ($script:updateMode) {
+    # The update is based on exactly baseCommit; the lease prevents recreating or replacing a moved/deleted PR ref.
+    $expectedRemoteRef = "refs/heads/$($manifest.branch):$($manifest.baseCommit)"
+    Git-Do @('push', "--force-with-lease=$expectedRemoteRef", '-u', 'origin', $manifest.branch)
+} else {
+    Git-Do @('push', '-u', 'origin', $manifest.branch)
+}
 if ($script:updateMode) {
     # The PR already exists and picks up the new commit by itself; just show its address.
     $prev = $ErrorActionPreference
