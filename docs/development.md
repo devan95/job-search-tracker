@@ -299,8 +299,12 @@ Its `delivery-manifest.json` has `"mode": "update"`; `branch` is the existing PR
 tip of the PR branch when the delivery was prepared. The package includes `delivery-manifest.json`, `commit.txt`, the
 changed files and root-level `run-delivery.cmd`. After `git fetch origin`, the runner compares the local PR branch with
 the fetched `origin/<branch>` snapshot and fast-forwards when needed, then requires local `HEAD` to equal `baseCommit`.
-This is a point-in-time check: if someone pushes to the remote branch after the fetch/check, the later push can be rejected.
-The runner never force-pushes. On success the existing PR updates automatically.
+The runner also compares the live exact remote ref to `baseCommit` before applying files. The update push uses
+`--force-with-lease=refs/heads/<branch>:<baseCommit>`: it only publishes the intended descendant when the remote ref
+still exists at that exact base. If another push moves the ref or the ref is deleted before the update push, the lease
+fails rather than overwriting or recreating the PR branch. This is still a point-in-time protocol; a changed ref must
+be inspected and the delivery rebuilt. The runner never force-pushes to a different tip. On success the existing PR
+updates automatically.
 
 ### Recovering when a push fails after a commit
 
