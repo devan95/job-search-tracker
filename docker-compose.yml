@@ -2,7 +2,7 @@
 # exposed beyond this machine. The web app runs with `npm run dev` for now.
 services:
   db:
-    image: postgres:17
+    image: postgres:18
     environment:
       POSTGRES_DB: jobsearch
       POSTGRES_USER: jobsearch
