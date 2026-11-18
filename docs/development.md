@@ -156,8 +156,15 @@ section "Company-list import".
 ## End-to-end tests (Playwright)
 
 Browser tests live in `e2e/` and run against the real stack: PostgreSQL and the API from Docker Compose, and the Vite dev
-server, which Playwright starts itself (`web/` needs `npm ci` once). Only the smoke test exists today (app loads, API and
-database report healthy); workflow tests are separate tasks.
+server, which Playwright starts itself (`web/` needs `npm ci` once). Two specs exist: `smoke.spec.ts` (app loads, API and
+database report healthy) and `lists-profiles.spec.ts`, the Lists & Profiles workflow: a candidate, two company lists, a
+multiline import that reuses a canonical company across lists (whitespace, blank lines, commas, duplicate preview), a search
+profile with several lists and work modes, `null` versus an explicit empty work-mode set, delete restrictions and
+remove-before-delete, and the validation and duplicate feedback. The tests drive the UI and use the API only to seed data
+and to read back what was stored. Every name carries a random suffix, so the tests run in parallel and a re-run does not
+collide, but they never delete their data: use a disposable database. The spec fails at once, with a clear message, when the
+API or PostgreSQL is not ready. No new tooling was added; the tests build on the existing Playwright setup. The Phase 1
+acceptance run (Order 9) is a separate task.
 
 ```
 docker compose up -d --wait db
