@@ -317,8 +317,11 @@ Exit code 2 means no matching ref; any other non-zero exit code is a query failu
   response; do not push again. Continue with the PR step below.
 - If the exact remote branch still points to `baseCommit`, the local branch is clean, and the retained delivery commit is
   the **only** commit after `baseCommit` (`git rev-list --count <baseCommit>..HEAD` returns `1` and
-  `git merge-base --is-ancestor <baseCommit> HEAD` succeeds), retry with `git push origin <branch>`. This is a
-  fast-forward push; Git rejects it if the remote moves before the retry.
+  `git merge-base --is-ancestor <baseCommit> HEAD` succeeds), retry with
+  `git push --force-with-lease=refs/heads/<branch>:<baseCommit> origin <branch>`. The ancestry and one-commit checks
+  ensure the local update is a fast-forward from `baseCommit`. The explicit expected-tip lease makes the retry fail if
+  the remote ref was deleted or moved after inspection, rather than unintentionally recreating or replacing it. Do not
+  use a plain push for this race-sensitive retry.
 - If the exact remote branch exists at any other commit, stop and compare the histories. Do not force-push; reconcile the
   remote work or request a rebuilt delivery.
 
