@@ -219,4 +219,32 @@ public class RoleLocationDataModelTests : DatabaseTestBase
         await using var read = Db.CreateContext();
         Assert.Equal(1, (await read.SearchProfiles.SingleAsync(p => p.Id == profile.Id)).ProfileVersion);
     }
+
+    [Fact]
+    public async Task Selecting_and_unselecting_on_an_existing_profile_keeps_its_profile_version()
+    {
+        var candidate = await AddCandidateAsync();
+        var roles = await AddRoleListAsync();
+        var places = await AddLocationSetAsync();
+        var profile = new SearchProfile(candidate.Id, "Profile") { ProfileVersion = 7 };
+        await AddAsync(profile);
+
+        await using (var add = Db.CreateContext())
+        {
+            add.SearchProfileRoleLists.Add(new SearchProfileRoleList { SearchProfileId = profile.Id, RoleListId = roles.Id });
+            await add.SaveChangesAsync();
+        }
+
+        await using (var add = Db.CreateContext())
+        {
+            add.SearchProfileLocationSets.Add(new SearchProfileLocationSet { SearchProfileId = profile.Id, LocationSetId = places.Id });
+            await add.SaveChangesAsync();
+        }
+
+        await Db.ExecuteAsync($"DELETE FROM search_profile_role_lists WHERE \"SearchProfileId\" = '{profile.Id}'");
+        await Db.ExecuteAsync($"DELETE FROM search_profile_location_sets WHERE \"SearchProfileId\" = '{profile.Id}'");
+
+        await using var read = Db.CreateContext();
+        Assert.Equal(7, (await read.SearchProfiles.SingleAsync(p => p.Id == profile.Id)).ProfileVersion);
+    }
 }

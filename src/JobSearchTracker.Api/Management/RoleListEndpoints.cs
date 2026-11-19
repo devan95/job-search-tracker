@@ -212,29 +212,33 @@ public static class RoleListEndpoints
             return ApiResults.NotFound("Role list", id);
         }
 
-        var primary = await db.RoleListTitles
-            .Include(t => t.Aliases)
-            .SingleOrDefaultAsync(t => t.Id == titleId && t.RoleListId == id && t.PrimaryTitleId == null, ct);
-        if (primary is null)
-        {
-            return TitleNotFound(id, titleId);
-        }
-
-        // Names owned by this title (itself and its aliases) do not clash with its own new values.
-        var taken = await TakenAsync(db, id, titleId, ct);
-        var clash = FirstClash(title, aliases, taken);
-        if (clash is not null)
-        {
-            return DuplicateTitle(clash);
-        }
-
-        // Replace the whole alias set: delete first and save, so a renamed alias never meets its old row in the unique index.
-        primary.Rename(title);
-        db.RoleListTitles.RemoveRange(primary.Aliases);
         try
         {
-            // One transaction, so a failure leaves the title and its aliases as they were.
+            // One transaction, so a failure leaves the title and its aliases as they were. The per-title lock is taken
+            // before the current aliases are read, so two replacements of the same title run one after the other and
+            // each one starts from the alias set the previous one saved.
             await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({titleId.ToString()}, 0))", ct);
+
+            var primary = await db.RoleListTitles
+                .Include(t => t.Aliases)
+                .SingleOrDefaultAsync(t => t.Id == titleId && t.RoleListId == id && t.PrimaryTitleId == null, ct);
+            if (primary is null)
+            {
+                return TitleNotFound(id, titleId);
+            }
+
+            // Names owned by this title (itself and its aliases) do not clash with its own new values.
+            var taken = await TakenAsync(db, id, titleId, ct);
+            var clash = FirstClash(title, aliases, taken);
+            if (clash is not null)
+            {
+                return DuplicateTitle(clash);
+            }
+
+            // Replace the whole alias set: delete first and save, so a renamed alias never meets its old row in the unique index.
+            primary.Rename(title);
+            db.RoleListTitles.RemoveRange(primary.Aliases);
             await db.SaveChangesAsync(ct);
             foreach (var alias in aliases)
             {
@@ -376,12 +380,13 @@ public static class RoleListEndpoints
     private static List<RoleTitleResponse> ToTitleResponses(IEnumerable<RoleListTitle> rows)
     {
         var all = rows.ToList();
+        var aliasesByPrimary = all.Where(t => t.PrimaryTitleId is not null).ToLookup(t => t.PrimaryTitleId!.Value);
         return all.Where(t => t.PrimaryTitleId is null)
             .OrderBy(t => t.NormalizedTitle, StringComparer.Ordinal)
             .Select(t => new RoleTitleResponse(
                 t.Id,
                 t.Title,
-                all.Where(a => a.PrimaryTitleId == t.Id)
+                aliasesByPrimary[t.Id]
                     .OrderBy(a => a.NormalizedTitle, StringComparer.Ordinal)
                     .Select(a => new RoleAliasResponse(a.Id, a.Title))
                     .ToList()))

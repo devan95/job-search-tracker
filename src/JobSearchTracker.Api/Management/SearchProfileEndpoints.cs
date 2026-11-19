@@ -343,7 +343,25 @@ public static class SearchProfileEndpoints
         }
 
         db.SearchProfileRoleLists.Remove(link);
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // The row was removed by a concurrent request: say what is gone now.
+            db.ChangeTracker.Clear();
+            if (!await db.SearchProfiles.AnyAsync(p => p.Id == id, ct))
+            {
+                return ApiResults.NotFound("Search profile", id);
+            }
+
+            return ApiResults.NotFound(
+                "Role list is not selected by this profile",
+                $"Role list {roleListId} is not selected by search profile {id}.",
+                ApiResults.NotAMemberCode);
+        }
+
         return Results.NoContent();
     }
 
@@ -401,7 +419,25 @@ public static class SearchProfileEndpoints
         }
 
         db.SearchProfileLocationSets.Remove(link);
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // The row was removed by a concurrent request: say what is gone now.
+            db.ChangeTracker.Clear();
+            if (!await db.SearchProfiles.AnyAsync(p => p.Id == id, ct))
+            {
+                return ApiResults.NotFound("Search profile", id);
+            }
+
+            return ApiResults.NotFound(
+                "Location set is not selected by this profile",
+                $"Location set {locationSetId} is not selected by search profile {id}.",
+                ApiResults.NotAMemberCode);
+        }
+
         return Results.NoContent();
     }
 

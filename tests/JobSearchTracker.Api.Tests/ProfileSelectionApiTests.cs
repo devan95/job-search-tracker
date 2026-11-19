@@ -124,9 +124,12 @@ public class ProfileSelectionApiTests : ApiTestBase
         var roles = await CreateRoleListAsync("Roles");
         var places = await CreateLocationSetAsync("Places");
 
-        await PutAsync($"/api/search-profiles/{created.Id}/role-lists/{roles}");
-        await PutAsync($"/api/search-profiles/{created.Id}/location-sets/{places}");
-        await DeleteAsync($"/api/search-profiles/{created.Id}/role-lists/{roles}");
+        Assert.Equal(HttpStatusCode.NoContent, (await PutAsync($"/api/search-profiles/{created.Id}/role-lists/{roles}")).Status);
+        Assert.Equal(HttpStatusCode.NoContent, (await PutAsync($"/api/search-profiles/{created.Id}/location-sets/{places}")).Status);
+        var selected = await GetAsync($"/api/search-profiles/{created.Id}");
+        Assert.Equal(roles, selected.Body.GetProperty("roleLists")[0].GetProperty("id").GetGuid());
+        Assert.Equal(places, selected.Body.GetProperty("locationSets")[0].GetProperty("id").GetGuid());
+        Assert.Equal(HttpStatusCode.NoContent, (await DeleteAsync($"/api/search-profiles/{created.Id}/role-lists/{roles}")).Status);
 
         var after = await GetAsync($"/api/search-profiles/{created.Id}");
         Assert.Equal(1, after.Body.GetProperty("profileVersion").GetInt32());

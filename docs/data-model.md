@@ -150,7 +150,7 @@ that is `rejected`, `withdrawn`, `interview` or `offer` keeps `IsApplied`, `Meth
 
 ## Role lists and location sets (Order 4; decisions OQ-P1.1 to OQ-P1.3, answered 2026-11-18)
 
-Order 4 (migration `20261118120000_AddRoleListsAndLocationSets`) adds six tables, so the model has sixteen tables in total.
+Order 4 (migration `20261118120000_AddRoleListsAndLocationSets`) adds six tables, so the model has sixteen tables in total. This section supersedes the location-set and role-list/alias entries in the deferred-requirements list at the end of this file.
 
 | Table | Purpose | Key columns |
 | --- | --- | --- |
@@ -196,7 +196,7 @@ Assumptions to confirm (not settled by the answers above):
 
 ## Deferred requirements (AC7)
 
-Not in this model: employer website/career URL/ATS, source catalog and per-source enablement, automatic `ProfileVersion` increment. Their owner and phase are on the Notion Task Board and Product Requirements; the API is in [api.md](api.md).
+Not in this model: location sets, role lists and aliases, employer website/career URL/ATS, source catalog and per-source enablement, automatic `ProfileVersion` increment. Their owner and phase are on the Notion Task Board and Product Requirements; the API is in [api.md](api.md).
 
 ## Assumptions to confirm
 
