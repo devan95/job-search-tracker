@@ -386,7 +386,9 @@ public class ManagementApiAcceptanceTests : ApiTestBase
             "companyMonitoringEnabled",
             "broadSearchEnabled",
             "profileVersion",
-            "companyLists");
+            "companyLists",
+            "roleLists",
+            "locationSets");
         AssertFields(profile.Body.GetProperty("companyLists")[0], "id", "name", "defaultWorkModes");
     }
 
