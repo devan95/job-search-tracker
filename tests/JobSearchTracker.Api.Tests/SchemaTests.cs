@@ -6,11 +6,12 @@ public class SchemaTests : DatabaseTestBase
     private static readonly string[] ExpectedTables =
     [
         "application_audit", "applications", "candidates", "company_list_employers", "company_lists", "employers",
-        "job_status_history", "jobs", "search_profile_company_lists", "search_profiles",
+        "job_status_history", "jobs", "location_set_locations", "location_sets", "role_list_titles", "role_lists",
+        "search_profile_company_lists", "search_profile_location_sets", "search_profile_role_lists", "search_profiles",
     ];
 
     [Fact]
-    public async Task Exactly_ten_application_tables_exist_excluding_the_migration_history()
+    public async Task Exactly_sixteen_application_tables_exist_excluding_the_migration_history()
     {
         var tables = await Db.QueryAsync(
             "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' " +
@@ -22,10 +23,10 @@ public class SchemaTests : DatabaseTestBase
     }
 
     [Fact]
-    public async Task Migration_history_table_records_exactly_the_three_migrations()
+    public async Task Migration_history_table_records_exactly_the_four_migrations()
     {
         var applied = await Db.QueryAsync("SELECT \"MigrationId\" FROM \"__EFMigrationsHistory\"", r => r.GetString(0));
-        Assert.Equal(new[] {"20261114120000_InitialDataModel", "20261117060000_AddJobs", "20261118040000_AddApplications"}, applied.OrderBy(x => x, StringComparer.Ordinal));
+        Assert.Equal(new[] {"20261114120000_InitialDataModel", "20261117060000_AddJobs", "20261118040000_AddApplications", "20261118120000_AddRoleListsAndLocationSets"}, applied.OrderBy(x => x, StringComparer.Ordinal));
     }
 
     [Fact]
@@ -100,8 +101,29 @@ public class SchemaTests : DatabaseTestBase
             "jobs.Title character varying NO 200",
             "jobs.UpdatedAtUtc timestamp with time zone NO -",
             "jobs.WorkMode character varying YES 10",
+            "location_set_locations.CountryCode character varying YES 2",
+            "location_set_locations.Id uuid NO -",
+            "location_set_locations.Label character varying NO 200",
+            "location_set_locations.LocationSetId uuid NO -",
+            "location_set_locations.NormalizedLabel character varying NO 200",
+            "location_set_locations.Scope character varying NO 20",
+            "location_sets.Id uuid NO -",
+            "location_sets.Name character varying NO 200",
+            "location_sets.NormalizedName character varying NO 200",
+            "role_list_titles.Id uuid NO -",
+            "role_list_titles.NormalizedTitle character varying NO 200",
+            "role_list_titles.PrimaryTitleId uuid YES -",
+            "role_list_titles.RoleListId uuid NO -",
+            "role_list_titles.Title character varying NO 200",
+            "role_lists.Id uuid NO -",
+            "role_lists.Name character varying NO 200",
+            "role_lists.NormalizedName character varying NO 200",
             "search_profile_company_lists.CompanyListId uuid NO -",
             "search_profile_company_lists.SearchProfileId uuid NO -",
+            "search_profile_location_sets.LocationSetId uuid NO -",
+            "search_profile_location_sets.SearchProfileId uuid NO -",
+            "search_profile_role_lists.RoleListId uuid NO -",
+            "search_profile_role_lists.SearchProfileId uuid NO -",
             "search_profiles.BroadSearchEnabled boolean NO -",
             "search_profiles.CandidateId uuid NO -",
             "search_profiles.CompanyMonitoringEnabled boolean NO -",
@@ -124,7 +146,14 @@ public class SchemaTests : DatabaseTestBase
             r => r.GetString(0));
 
         Assert.Equal(
-            new[] {"IX_applications_CandidateId_JobId", "IX_company_lists_NormalizedName", "IX_employers_NormalizedName", "IX_jobs_EmployerId_NormalizedRequisitionId", "IX_search_profiles_CandidateId_NormalizedName"}
+            new[]
+            {
+                "IX_applications_CandidateId_JobId", "IX_company_lists_NormalizedName", "IX_employers_NormalizedName",
+                "IX_jobs_EmployerId_NormalizedRequisitionId", "IX_location_set_locations_unique_no_country",
+                "IX_location_set_locations_unique_with_country", "IX_location_sets_NormalizedName",
+                "IX_role_list_titles_RoleListId_NormalizedTitle", "IX_role_lists_NormalizedName",
+                "IX_search_profiles_CandidateId_NormalizedName",
+            }
                 .OrderBy(x => x, StringComparer.Ordinal),
             unique.OrderBy(x => x, StringComparer.Ordinal));
     }
@@ -146,8 +175,15 @@ public class SchemaTests : DatabaseTestBase
                 "company_list_employers -> employers RESTRICT",
                 "job_status_history -> jobs CASCADE",
                 "jobs -> employers RESTRICT",
+                "location_set_locations -> location_sets CASCADE",
+                "role_list_titles -> role_list_titles CASCADE",
+                "role_list_titles -> role_lists CASCADE",
                 "search_profile_company_lists -> company_lists RESTRICT",
                 "search_profile_company_lists -> search_profiles CASCADE",
+                "search_profile_location_sets -> location_sets RESTRICT",
+                "search_profile_location_sets -> search_profiles CASCADE",
+                "search_profile_role_lists -> role_lists RESTRICT",
+                "search_profile_role_lists -> search_profiles CASCADE",
                 "search_profiles -> candidates RESTRICT",
             },
             rules.OrderBy(x => x, StringComparer.Ordinal));
@@ -182,6 +218,14 @@ public class SchemaTests : DatabaseTestBase
                 "CK_jobs_status_values",
                 "CK_jobs_title_not_blank",
                 "CK_jobs_work_mode_values",
+                "CK_location_set_locations_country_code_format",
+                "CK_location_set_locations_label_not_blank",
+                "CK_location_set_locations_scope_country",
+                "CK_location_set_locations_scope_values",
+                "CK_location_sets_name_not_blank",
+                "CK_role_list_titles_not_own_primary",
+                "CK_role_list_titles_title_not_blank",
+                "CK_role_lists_name_not_blank",
                 "CK_search_profiles_name_not_blank",
                 "CK_search_profiles_profile_version_min",
                 "CK_search_profiles_work_modes_range",

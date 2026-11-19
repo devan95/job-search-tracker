@@ -396,6 +396,149 @@ namespace JobSearchTracker.Api.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("JobSearchTracker.Api.Data.LocationSet", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NormalizedName")
+                        .IsUnique();
+
+                    b.ToTable("location_sets", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_location_sets_name_not_blank", "char_length(btrim(\"Name\")) > 0");
+                        });
+                });
+
+            modelBuilder.Entity("JobSearchTracker.Api.Data.LocationSetLocation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CountryCode")
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("LocationSetId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("NormalizedLabel")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LocationSetId", "Scope", "NormalizedLabel")
+                        .IsUnique()
+                        .HasDatabaseName("IX_location_set_locations_unique_no_country")
+                        .HasFilter("\"CountryCode\" IS NULL");
+
+                    b.HasIndex("LocationSetId", "Scope", "NormalizedLabel", "CountryCode")
+                        .IsUnique()
+                        .HasDatabaseName("IX_location_set_locations_unique_with_country")
+                        .HasFilter("\"CountryCode\" IS NOT NULL");
+
+                    b.ToTable("location_set_locations", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_location_set_locations_country_code_format", "\"CountryCode\" IS NULL OR \"CountryCode\" ~ '^[A-Z]{2}$'");
+
+                            t.HasCheckConstraint("CK_location_set_locations_label_not_blank", "char_length(btrim(\"Label\")) > 0");
+
+                            t.HasCheckConstraint("CK_location_set_locations_scope_country", "(\"Scope\" <> 'remoteCountry' OR \"CountryCode\" IS NOT NULL) AND (\"Scope\" <> 'remoteWorldwide' OR \"CountryCode\" IS NULL)");
+
+                            t.HasCheckConstraint("CK_location_set_locations_scope_values", "\"Scope\" IN ('city', 'state', 'country', 'remoteCountry', 'remoteWorldwide')");
+                        });
+                });
+
+            modelBuilder.Entity("JobSearchTracker.Api.Data.RoleList", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NormalizedName")
+                        .IsUnique();
+
+                    b.ToTable("role_lists", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_role_lists_name_not_blank", "char_length(btrim(\"Name\")) > 0");
+                        });
+                });
+
+            modelBuilder.Entity("JobSearchTracker.Api.Data.RoleListTitle", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("NormalizedTitle")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid?>("PrimaryTitleId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("RoleListId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PrimaryTitleId");
+
+                    b.HasIndex("RoleListId", "NormalizedTitle")
+                        .IsUnique();
+
+                    b.ToTable("role_list_titles", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_role_list_titles_not_own_primary", "\"PrimaryTitleId\" IS NULL OR \"PrimaryTitleId\" <> \"Id\"");
+
+                            t.HasCheckConstraint("CK_role_list_titles_title_not_blank", "char_length(btrim(\"Title\")) > 0");
+                        });
+                });
+
             modelBuilder.Entity("JobSearchTracker.Api.Data.SearchProfile", b =>
                 {
                     b.Property<Guid>("Id")
@@ -455,6 +598,36 @@ namespace JobSearchTracker.Api.Data.Migrations
                     b.HasIndex("CompanyListId");
 
                     b.ToTable("search_profile_company_lists");
+                });
+
+            modelBuilder.Entity("JobSearchTracker.Api.Data.SearchProfileLocationSet", b =>
+                {
+                    b.Property<Guid>("SearchProfileId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("LocationSetId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("SearchProfileId", "LocationSetId");
+
+                    b.HasIndex("LocationSetId");
+
+                    b.ToTable("search_profile_location_sets");
+                });
+
+            modelBuilder.Entity("JobSearchTracker.Api.Data.SearchProfileRoleList", b =>
+                {
+                    b.Property<Guid>("SearchProfileId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("RoleListId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("SearchProfileId", "RoleListId");
+
+                    b.HasIndex("RoleListId");
+
+                    b.ToTable("search_profile_role_lists");
                 });
 
             modelBuilder.Entity("JobSearchTracker.Api.Data.Application", b =>
@@ -528,6 +701,35 @@ namespace JobSearchTracker.Api.Data.Migrations
                     b.Navigation("Job");
                 });
 
+            modelBuilder.Entity("JobSearchTracker.Api.Data.LocationSetLocation", b =>
+                {
+                    b.HasOne("JobSearchTracker.Api.Data.LocationSet", "LocationSet")
+                        .WithMany("Locations")
+                        .HasForeignKey("LocationSetId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("LocationSet");
+                });
+
+            modelBuilder.Entity("JobSearchTracker.Api.Data.RoleListTitle", b =>
+                {
+                    b.HasOne("JobSearchTracker.Api.Data.RoleListTitle", "PrimaryTitle")
+                        .WithMany("Aliases")
+                        .HasForeignKey("PrimaryTitleId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("JobSearchTracker.Api.Data.RoleList", "RoleList")
+                        .WithMany("Titles")
+                        .HasForeignKey("RoleListId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PrimaryTitle");
+
+                    b.Navigation("RoleList");
+                });
+
             modelBuilder.Entity("JobSearchTracker.Api.Data.SearchProfile", b =>
                 {
                     b.HasOne("JobSearchTracker.Api.Data.Candidate", "Candidate")
@@ -554,6 +756,44 @@ namespace JobSearchTracker.Api.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("CompanyList");
+
+                    b.Navigation("SearchProfile");
+                });
+
+            modelBuilder.Entity("JobSearchTracker.Api.Data.SearchProfileLocationSet", b =>
+                {
+                    b.HasOne("JobSearchTracker.Api.Data.LocationSet", "LocationSet")
+                        .WithMany("SearchProfiles")
+                        .HasForeignKey("LocationSetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("JobSearchTracker.Api.Data.SearchProfile", "SearchProfile")
+                        .WithMany("LocationSets")
+                        .HasForeignKey("SearchProfileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("LocationSet");
+
+                    b.Navigation("SearchProfile");
+                });
+
+            modelBuilder.Entity("JobSearchTracker.Api.Data.SearchProfileRoleList", b =>
+                {
+                    b.HasOne("JobSearchTracker.Api.Data.RoleList", "RoleList")
+                        .WithMany("SearchProfiles")
+                        .HasForeignKey("RoleListId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("JobSearchTracker.Api.Data.SearchProfile", "SearchProfile")
+                        .WithMany("RoleLists")
+                        .HasForeignKey("SearchProfileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("RoleList");
 
                     b.Navigation("SearchProfile");
                 });
@@ -585,9 +825,32 @@ namespace JobSearchTracker.Api.Data.Migrations
                     b.Navigation("StatusHistory");
                 });
 
+            modelBuilder.Entity("JobSearchTracker.Api.Data.LocationSet", b =>
+                {
+                    b.Navigation("Locations");
+
+                    b.Navigation("SearchProfiles");
+                });
+
+            modelBuilder.Entity("JobSearchTracker.Api.Data.RoleList", b =>
+                {
+                    b.Navigation("SearchProfiles");
+
+                    b.Navigation("Titles");
+                });
+
+            modelBuilder.Entity("JobSearchTracker.Api.Data.RoleListTitle", b =>
+                {
+                    b.Navigation("Aliases");
+                });
+
             modelBuilder.Entity("JobSearchTracker.Api.Data.SearchProfile", b =>
                 {
                     b.Navigation("CompanyLists");
+
+                    b.Navigation("LocationSets");
+
+                    b.Navigation("RoleLists");
                 });
 #pragma warning restore 612, 618
         }

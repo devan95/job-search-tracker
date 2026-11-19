@@ -41,6 +41,8 @@ api.MapHealthEndpoints();
 api.MapCandidateEndpoints();
 api.MapEmployerEndpoints();
 api.MapCompanyListEndpoints();
+api.MapRoleListEndpoints();
+api.MapLocationSetEndpoints();
 api.MapSearchProfileEndpoints();
 api.MapJobEndpoints();
 api.MapApplicationEndpoints();
