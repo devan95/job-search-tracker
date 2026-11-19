@@ -148,9 +148,55 @@ migration and not part of the EF model) rejects every UPDATE and DELETE of an au
 Job status never changes an application (OQ-P1.5). The `applied` status and the `IsApplied` fact are separate: an application
 that is `rejected`, `withdrawn`, `interview` or `offer` keeps `IsApplied`, `Method` and `AppliedAtUtc`.
 
+## Role lists and location sets (Order 4; decisions OQ-P1.1 to OQ-P1.3, answered 2026-11-18)
+
+Order 4 (migration `20261118120000_AddRoleListsAndLocationSets`) adds six tables, so the model has sixteen tables in total.
+
+| Table | Purpose | Key columns |
+| --- | --- | --- |
+| `role_lists` | Named, reusable list of target role titles. | `Id`, `Name`, `NormalizedName` (unique) |
+| `role_list_titles` | Primary titles and their aliases, in one table. | `Id`, `RoleListId`, `Title`, `NormalizedTitle`, `PrimaryTitleId` (null for a primary title) |
+| `location_sets` | Named, reusable set of locations. | `Id`, `Name`, `NormalizedName` (unique) |
+| `location_set_locations` | One location of a set. | `Id`, `LocationSetId`, `Label`, `NormalizedLabel`, `Scope`, `CountryCode` (nullable) |
+| `search_profile_role_lists` | Join: role lists a profile selects. | PK (`SearchProfileId`, `RoleListId`) |
+| `search_profile_location_sets` | Join: location sets a profile selects. | PK (`SearchProfileId`, `LocationSetId`) |
+
+| ID | Decision | Where it shows |
+| --- | --- | --- |
+| OQ-P1.1 | An entry is one primary title plus zero or more aliases. Aliases use the name normalizer and are unique within a list; the same title may be in different lists. Phase 1 only stores them; all matching is Phase 3 S3.2. | Unique index `IX_role_list_titles_RoleListId_NormalizedTitle`; `PrimaryTitleId` |
+| OQ-P1.2 | A location is a free-text label, a required scope (`city`, `state`, `country`, `remoteCountry`, `remoteWorldwide`) and an optional ISO 3166-1 alpha-2 country code. No built-in place list, nothing hardcoded to one country. Work mode stays separate (`WorkModes`). No regions such as EMEA or APAC. | `Scope`, `CountryCode` and their checks |
+| OQ-P1.3 | U9 stays: selecting a role list or location set does not change `ProfileVersion` in Phase 1; the increment rule is S3.1. | No code touches `ProfileVersion` |
+
+Titles and aliases share one namespace per list, so one lookup finds either and an alias can never equal another title or
+alias of its list. An alias row points at its primary title through `PrimaryTitleId` (a self reference, `CASCADE`); an alias of an
+alias is not possible through the API, and `CK_role_list_titles_not_own_primary` stops a row from being its own primary.
+
+Location checks: `CK_location_set_locations_scope_values` (the five scopes), `CK_location_set_locations_country_code_format`
+(two upper-case letters, not checked against a country list), `CK_location_set_locations_scope_country` (`remoteCountry`
+needs a code, `remoteWorldwide` has none) and `CK_location_set_locations_label_not_blank`. So "Remote India"
+(`remoteCountry` + `IN`) and "Remote worldwide" cannot be confused. Uniqueness inside a set is two partial unique indexes:
+(`LocationSetId`, `Scope`, `NormalizedLabel`) where the country is null, and the same plus `CountryCode` where it is not,
+so a missing country counts as a value of its own and the same label may repeat with different countries.
+
+| Parent -> child | Rule | Effect |
+| --- | --- | --- |
+| `role_lists` -> `role_list_titles` | CASCADE | Deleting a list removes its titles and aliases. |
+| `role_list_titles` -> `role_list_titles` (`PrimaryTitleId`) | CASCADE | Deleting a primary title removes its aliases. |
+| `location_sets` -> `location_set_locations` | CASCADE | Deleting a set removes its locations. |
+| `search_profiles` -> `search_profile_role_lists` / `search_profile_location_sets` | CASCADE | Deleting a profile removes its selections only. |
+| `role_lists` -> `search_profile_role_lists` | RESTRICT | A role list a profile still selects cannot be deleted (API: 409 `role_list_in_use`). |
+| `location_sets` -> `search_profile_location_sets` | RESTRICT | A location set a profile still selects cannot be deleted (API: 409 `location_set_in_use`). |
+
+Assumptions to confirm (not settled by the answers above):
+
+1. A title and an alias also may not be equal within one list (the single namespace), not only two aliases.
+2. `remoteWorldwide` forbids a country code and `remoteCountry` requires one.
+3. The same label may repeat in one set only with a different scope or country.
+4. A list or set that a profile selects cannot be deleted (RESTRICT), as for company lists.
+
 ## Deferred requirements (AC7)
 
-Not in this model: location sets, role lists and aliases, employer website/career URL/ATS, source catalog and per-source enablement, automatic `ProfileVersion` increment. Their owner and phase are on the Notion Task Board and Product Requirements; the API is in [api.md](api.md).
+Not in this model: employer website/career URL/ATS, source catalog and per-source enablement, automatic `ProfileVersion` increment. Their owner and phase are on the Notion Task Board and Product Requirements; the API is in [api.md](api.md).
 
 ## Assumptions to confirm
 

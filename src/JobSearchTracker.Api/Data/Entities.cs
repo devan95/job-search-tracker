@@ -146,6 +146,8 @@ public class SearchProfile
     public int ProfileVersion { get; set; } = 1;
 
     public List<SearchProfileCompanyList> CompanyLists { get; } = [];
+    public List<SearchProfileRoleList> RoleLists { get; } = [];
+    public List<SearchProfileLocationSet> LocationSets { get; } = [];
 
     public void Rename(string name)
     {

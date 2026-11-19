@@ -4,7 +4,8 @@ namespace JobSearchTracker.Api.Data;
 
 /// <summary>
 /// EF Core context for the Phase 1 data model: candidates, employers, company lists, search profiles, the
-/// two join tables, canonical jobs and their status history, applications and their audit trail. See docs/data-model.md for the decisions behind it.
+/// two join tables, canonical jobs and their status history, applications and their audit trail, role lists with their
+/// titles and aliases, location sets with their locations, and the profile selections of both. See docs/data-model.md for the decisions behind it.
 /// </summary>
 public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
@@ -18,6 +19,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<JobStatusHistory> JobStatusHistories => Set<JobStatusHistory>();
     public DbSet<Application> Applications => Set<Application>();
     public DbSet<ApplicationAuditEntry> ApplicationAuditEntries => Set<ApplicationAuditEntry>();
+    public DbSet<RoleList> RoleLists => Set<RoleList>();
+    public DbSet<RoleListTitle> RoleListTitles => Set<RoleListTitle>();
+    public DbSet<LocationSet> LocationSets => Set<LocationSet>();
+    public DbSet<LocationSetLocation> LocationSetLocations => Set<LocationSetLocation>();
+    public DbSet<SearchProfileRoleList> SearchProfileRoleLists => Set<SearchProfileRoleList>();
+    public DbSet<SearchProfileLocationSet> SearchProfileLocationSets => Set<SearchProfileLocationSet>();
 
     private static string InList(IEnumerable<string> values) => string.Join(", ", values.Select(v => $"'{v}'"));
 
@@ -194,6 +201,88 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             b.HasOne(x => x.Application).WithMany(x => x.AuditEntries)
                 .HasForeignKey(x => x.ApplicationId).OnDelete(DeleteBehavior.Restrict).IsRequired();
             b.HasIndex(x => new { x.ApplicationId, x.ChangedAtUtc });
+        });
+
+        modelBuilder.Entity<RoleList>(b =>
+        {
+            b.ToTable("role_lists", t => t.HasCheckConstraint("CK_role_lists_name_not_blank", "char_length(btrim(\"Name\")) > 0"));
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Name).IsRequired().HasMaxLength(NameNormalizer.MaxLength);
+            b.Property(x => x.NormalizedName).IsRequired().HasMaxLength(NameNormalizer.MaxLength);
+            b.HasIndex(x => x.NormalizedName).IsUnique();
+        });
+
+        modelBuilder.Entity<RoleListTitle>(b =>
+        {
+            b.ToTable("role_list_titles", t =>
+            {
+                t.HasCheckConstraint("CK_role_list_titles_title_not_blank", "char_length(btrim(\"Title\")) > 0");
+                t.HasCheckConstraint("CK_role_list_titles_not_own_primary", "\"PrimaryTitleId\" IS NULL OR \"PrimaryTitleId\" <> \"Id\"");
+            });
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Title).IsRequired().HasMaxLength(NameNormalizer.MaxLength);
+            b.Property(x => x.NormalizedTitle).IsRequired().HasMaxLength(NameNormalizer.MaxLength);
+            b.HasOne(x => x.RoleList).WithMany(x => x.Titles)
+                .HasForeignKey(x => x.RoleListId).OnDelete(DeleteBehavior.Cascade).IsRequired();
+            // An alias belongs to its primary title and goes with it.
+            b.HasOne(x => x.PrimaryTitle).WithMany(x => x.Aliases)
+                .HasForeignKey(x => x.PrimaryTitleId).OnDelete(DeleteBehavior.Cascade);
+            // Titles and aliases share one namespace per list (OQ-P1.1).
+            b.HasIndex(x => new { x.RoleListId, x.NormalizedTitle }).IsUnique();
+        });
+
+        modelBuilder.Entity<LocationSet>(b =>
+        {
+            b.ToTable("location_sets", t => t.HasCheckConstraint("CK_location_sets_name_not_blank", "char_length(btrim(\"Name\")) > 0"));
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Name).IsRequired().HasMaxLength(NameNormalizer.MaxLength);
+            b.Property(x => x.NormalizedName).IsRequired().HasMaxLength(NameNormalizer.MaxLength);
+            b.HasIndex(x => x.NormalizedName).IsUnique();
+        });
+
+        modelBuilder.Entity<LocationSetLocation>(b =>
+        {
+            b.ToTable("location_set_locations", t =>
+            {
+                t.HasCheckConstraint("CK_location_set_locations_label_not_blank", "char_length(btrim(\"Label\")) > 0");
+                t.HasCheckConstraint("CK_location_set_locations_scope_values", $"\"Scope\" IN ({InList(LocationScopes.All)})");
+                t.HasCheckConstraint("CK_location_set_locations_country_code_format", "\"CountryCode\" IS NULL OR \"CountryCode\" ~ '^[A-Z]{2}$'");
+                t.HasCheckConstraint("CK_location_set_locations_scope_country",
+                    $"(\"Scope\" <> '{LocationScopes.RemoteCountry}' OR \"CountryCode\" IS NOT NULL) AND (\"Scope\" <> '{LocationScopes.RemoteWorldwide}' OR \"CountryCode\" IS NULL)");
+            });
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Label).IsRequired().HasMaxLength(NameNormalizer.MaxLength);
+            b.Property(x => x.NormalizedLabel).IsRequired().HasMaxLength(NameNormalizer.MaxLength);
+            b.Property(x => x.Scope).IsRequired().HasMaxLength(20);
+            b.Property(x => x.CountryCode).HasMaxLength(LocationSetLocation.CountryCodeLength);
+            b.HasOne(x => x.LocationSet).WithMany(x => x.Locations)
+                .HasForeignKey(x => x.LocationSetId).OnDelete(DeleteBehavior.Cascade).IsRequired();
+            // The same label and scope may repeat only with different countries (for example two cities of one name).
+            // Two partial unique indexes, because a NULL country must also count as a value.
+            b.HasIndex(x => new { x.LocationSetId, x.Scope, x.NormalizedLabel }, "IX_location_set_locations_unique_no_country")
+                .IsUnique().HasFilter("\"CountryCode\" IS NULL");
+            b.HasIndex(x => new { x.LocationSetId, x.Scope, x.NormalizedLabel, x.CountryCode }, "IX_location_set_locations_unique_with_country")
+                .IsUnique().HasFilter("\"CountryCode\" IS NOT NULL");
+        });
+
+        modelBuilder.Entity<SearchProfileRoleList>(b =>
+        {
+            b.ToTable("search_profile_role_lists");
+            b.HasKey(x => new { x.SearchProfileId, x.RoleListId });
+            b.HasOne(x => x.SearchProfile).WithMany(x => x.RoleLists)
+                .HasForeignKey(x => x.SearchProfileId).OnDelete(DeleteBehavior.Cascade).IsRequired();
+            b.HasOne(x => x.RoleList).WithMany(x => x.SearchProfiles)
+                .HasForeignKey(x => x.RoleListId).OnDelete(DeleteBehavior.Restrict).IsRequired();
+        });
+
+        modelBuilder.Entity<SearchProfileLocationSet>(b =>
+        {
+            b.ToTable("search_profile_location_sets");
+            b.HasKey(x => new { x.SearchProfileId, x.LocationSetId });
+            b.HasOne(x => x.SearchProfile).WithMany(x => x.LocationSets)
+                .HasForeignKey(x => x.SearchProfileId).OnDelete(DeleteBehavior.Cascade).IsRequired();
+            b.HasOne(x => x.LocationSet).WithMany(x => x.SearchProfiles)
+                .HasForeignKey(x => x.LocationSetId).OnDelete(DeleteBehavior.Restrict).IsRequired();
         });
     }
 }

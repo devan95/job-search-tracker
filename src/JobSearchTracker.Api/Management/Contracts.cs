@@ -43,7 +43,9 @@ public sealed record CreateSearchProfileRequest(
     IReadOnlyList<Guid>? CompanyListIds,
     IReadOnlyList<string>? WorkModes,
     bool? CompanyMonitoringEnabled,
-    bool? BroadSearchEnabled);
+    bool? BroadSearchEnabled,
+    IReadOnlyList<Guid>? RoleListIds = null,
+    IReadOnlyList<Guid>? LocationSetIds = null);
 
 /// <summary>
 /// PUT replaces the profile's own fields; both flags are required. An omitted or null <c>workModes</c> means "inherit the
@@ -66,4 +68,6 @@ public sealed record SearchProfileResponse(
     bool CompanyMonitoringEnabled,
     bool BroadSearchEnabled,
     int ProfileVersion,
-    IReadOnlyList<CompanyListReference> CompanyLists);
+    IReadOnlyList<CompanyListReference> CompanyLists,
+    IReadOnlyList<RoleListReference> RoleLists,
+    IReadOnlyList<LocationSetReference> LocationSets);

@@ -2,7 +2,7 @@
 
 Task: *Backend API: candidates, employers, company lists and search profiles.* It exposes the data model in
 [data-model.md](data-model.md); the rules there (normalization, uniqueness, delete behaviour) are the rules here. There is
-no multiline parser, duplicate preview, frontend, job discovery, role/location sets, employer website/career URL/ATS or
+no multiline parser, duplicate preview, frontend, job discovery, employer website/career URL/ATS or
 authentication in this task. The API is for the local home network only (see the Architecture page in Notion).
 
 All paths are under `/api`. Bodies are JSON with camelCase names. Ids are GUIDs; a route id that is not a GUID matches no
@@ -34,6 +34,9 @@ List endpoints take `skip` (default 0) and `take` (default 100, at most 500) and
 | `duplicate_name` | 409 | Same normalized name (employers and lists: globally; profiles: per candidate). Employer conflicts include `existingId` |
 | `candidate_has_profiles` | 409 | Delete of a candidate that still has search profiles (`searchProfileCount`) |
 | `company_list_in_use` | 409 | Delete of a list that a search profile still selects (`searchProfileCount`) |
+| `role_list_in_use` / `location_set_in_use` | 409 | Delete of a role list or location set that a search profile still selects (`searchProfileCount`) |
+| `duplicate_title` | 409 | A title or alias that is already a title or alias in the same role list (after normalization) |
+| `duplicate_location` | 409 | A location with the same label, scope and country as one already in the same set (after normalization) |
 | `employer_in_company_list` | 409 | Delete of an employer that is still in a list (`companyListCount`) |
 | `employer_has_jobs` | 409 | Delete of an employer that still has jobs (`jobCount`) |
 | `duplicate_requisition` | 409 | Same employer and requisition id as an existing job (`existingId`, `matchedOn`). Cannot be overridden |
@@ -160,21 +163,67 @@ POST /api/company-lists/2a9e.../import
 -> 200 { "created": 1, "reused": 1, "addedToList": 2, "skipped": 2 }
 ```
 
+### Role lists (Order 4; decision OQ-P1.1)
+
+Named, reusable lists of target role titles. Nothing is hardcoded: any title in any language is accepted. A list has primary
+**titles**, and each title has zero or more **aliases** (equivalent titles). Titles and aliases are normalized with the
+name normalizer and are unique within one list, so an alias can never equal another title or alias of the same list; the same
+title may be in different lists. Phase 1 only stores them: how a job title is matched against a list is Phase 3 (S3.2).
+
+| Method and path | Body | Notes |
+| --- | --- | --- |
+| `POST /role-lists` | `{ "name" }` | 201. 409 `duplicate_name` |
+| `GET /role-lists?skip=&take=` | | Summaries (`titleCount`, `aliasCount`) in name order, paged (default 100, max 500) |
+| `GET /role-lists/{id}` | | Includes `titles` (name order), each with its `aliases` |
+| `PUT /role-lists/{id}` | `{ "name" }` | Renames only; never changes titles |
+| `DELETE /role-lists/{id}` | | Removes the list with its titles and aliases. 409 `role_list_in_use` while a profile selects it |
+| `POST /role-lists/{id}/titles` | `{ "title", "aliases"? }` | 201 with the title and its aliases. 400 for a blank value, an alias equal to its own title, or more than 50 aliases. 409 `duplicate_title` when any value is already in the list; nothing is saved then. A repeated alias in one request is kept once |
+| `PUT /role-lists/{id}/titles/{titleId}` | `{ "title", "aliases"? }` | Replaces the title and its whole alias set (omitted `aliases` = none) in one transaction. The title's own current values do not clash with themselves. 404 for an alias id |
+| `DELETE /role-lists/{id}/titles/{titleId}` | | Removes the title and its aliases; the list stays |
+
+### Location sets (Order 4; decision OQ-P1.2)
+
+Named, reusable sets of locations. A location has a free-text `label`, a required `scope` and an optional `countryCode`
+(ISO 3166-1 alpha-2, upper-cased on save, checked for shape only: there is no built-in place list). Scopes: `city`, `state`,
+`country`, `remoteCountry` (remote within a country; `countryCode` required) and `remoteWorldwide` (`countryCode` must be
+empty). "Remote India" is `remoteCountry` + `IN`; "Remote worldwide" is `remoteWorldwide`, so they never match each other.
+Work arrangement (`remote`, `onSite`, `hybrid`) is a different field and is not part of a location. `scope` is case-insensitive
+on input. A set cannot hold the same label (after normalization) with the same scope and country twice; the same label with
+another country or scope is allowed. A multiline paste is a client feature: the client sends one `POST` per line with the
+scope chosen for the whole paste, and each location is then edited on its own.
+
+| Method and path | Body | Notes |
+| --- | --- | --- |
+| `POST /location-sets` | `{ "name" }` | 201. 409 `duplicate_name` |
+| `GET /location-sets?skip=&take=` | | Summaries (`locationCount`) in name order, paged |
+| `GET /location-sets/{id}` | | Includes `locations` (`id`, `label`, `scope`, `countryCode`) ordered by label |
+| `PUT /location-sets/{id}` | `{ "name" }` | Renames only |
+| `DELETE /location-sets/{id}` | | Removes the set with its locations. 409 `location_set_in_use` while a profile selects it |
+| `POST /location-sets/{id}/locations` | `{ "label", "scope", "countryCode"? }` | 201. 400 for a missing or unknown scope, a bad code, no code for `remoteCountry` or a code for `remoteWorldwide`. 409 `duplicate_location` |
+| `PUT /location-sets/{id}/locations/{locationId}` | same as create | Replaces label, scope and country |
+| `DELETE /location-sets/{id}/locations/{locationId}` | | |
+
 ### Search profiles
 
 | Method and path | Body | Notes |
 | --- | --- | --- |
-| `POST /search-profiles` | `{ "candidateId", "name", "companyListIds"?, "workModes"?, "companyMonitoringEnabled"?, "broadSearchEnabled"? }` | Unknown candidate or list ids are 400 field errors. Omitted flags are false; both may be false (a draft) |
-| `GET /search-profiles?candidateId=` | | Optional candidate filter; each item includes its selected lists |
+| `POST /search-profiles` | `{ "candidateId", "name", "companyListIds"?, "roleListIds"?, "locationSetIds"?, "workModes"?, "companyMonitoringEnabled"?, "broadSearchEnabled"? }` | Unknown candidate, list or set ids are 400 field errors. Omitted flags are false; both may be false (a draft) |
+| `GET /search-profiles?candidateId=` | | Optional candidate filter; each item includes its selected `companyLists`, `roleLists` and `locationSets` (`id`, `name`, in name order) |
 | `GET /search-profiles/{id}` | | |
 | `PUT /search-profiles/{id}` | `{ "name", "workModes"?, "companyMonitoringEnabled", "broadSearchEnabled" }` | Both flags required. Omitted or null `workModes` = inherit; `[]` = explicit empty set. Never changes selected lists or `candidateId` |
 | `DELETE /search-profiles/{id}` | | Removes the profile and its list selections; candidate and lists stay |
 | `PUT /search-profiles/{id}/company-lists/{companyListId}` | | Select a list; selecting again is a 204 no-op |
 | `DELETE /search-profiles/{id}/company-lists/{companyListId}` | | Unselect; 404 `not_a_member` if it was not selected |
+| `PUT /search-profiles/{id}/role-lists/{roleListId}` | | Select a role list; selecting again is a 204 no-op |
+| `DELETE /search-profiles/{id}/role-lists/{roleListId}` | | Unselect; 404 `not_a_member` if it was not selected |
+| `PUT /search-profiles/{id}/location-sets/{locationSetId}` | | Select a location set; selecting again is a 204 no-op |
+| `DELETE /search-profiles/{id}/location-sets/{locationSetId}` | | Unselect; 404 `not_a_member` if it was not selected |
 
 `workModes` on a profile: `null` means "inherit each selected list's `defaultWorkModes`"; any array (including `[]`) overrides
-the defaults of every selected list. `profileVersion` starts at 1 and is returned as stored; nothing increments it in Phase 1.
-There is no source catalog or per-source enablement.
+the defaults of every selected list. Company lists, role lists and location sets are selected and unselected independently of
+each other, and a profile may select any number of each. `profileVersion` starts at 1 and is returned as stored; nothing
+increments it in Phase 1, including selecting or unselecting a role list or location set (U9, OQ-P1.3; the increment rule is
+S3.1). There is no source catalog or per-source enablement.
 
 ### Jobs
 

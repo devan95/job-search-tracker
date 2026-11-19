@@ -23,6 +23,10 @@ internal static class ApiResults
     public const string InvalidStatusTransitionCode = "invalid_status_transition";
     public const string JobInUseCode = "job_in_use";
     public const string ConcurrentModificationCode = "concurrent_modification";
+    public const string RoleListInUseCode = "role_list_in_use";
+    public const string LocationSetInUseCode = "location_set_in_use";
+    public const string DuplicateTitleCode = "duplicate_title";
+    public const string DuplicateLocationCode = "duplicate_location";
 
     public static IResult NotFound(string what, Guid id) =>
         Problem(StatusCodes.Status404NotFound, NotFoundCode, $"{what} not found", $"No {what.ToLowerInvariant()} with id {id} exists.");
