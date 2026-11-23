@@ -248,6 +248,45 @@ to touch your normal database, and `docker compose down` afterwards. A failed ru
 `e2e/test-results/` (traces and screenshots; both are git-ignored). CI runs this as the `e2e` job and uploads them as an
 artifact on failure. `e2e/` is excluded from SonarQube coverage (it contains tests only).
 
+### Phase 1 acceptance run (Order 9)
+
+`phase1-core.spec.ts` is the Phase 1 acceptance run mentioned above, with helpers in `phase1-support.ts`. It covers the whole
+manual core in one journey: a synthetic candidate; a company list imported through preview and confirm; a role list with an
+equivalent title; a location set with a city, remote within a country and remote worldwide (scopes kept separate from work
+modes); a search profile selecting all three kinds of list; a job added by hand whose company reuses the imported canonical
+employer, then retrieved and edited; an application tracked as Saved and not applied, confirmed as applied manually (method
+Manual, date and time recorded) and moved to Interview, with the three-entry audit history checked in the UI and the API; and
+closing and reopening the job without any change to the application. Further tests cover repost and duplicate protection (the
+same requisition id is blocked with no override, the same apply link is a warning, one application per candidate and
+canonical job, and a second one is refused with `application_exists`), validation and error states (job form, confirmation
+needs the tick and no future date, corrections need a reason and cannot make an application applied, a stale status change, a
+job in use cannot be deleted) and an unreachable API. No application is marked applied except through the explicit
+confirmation step. It adds specs only: there is one E2E tool chain and one CI job (`e2e`).
+
+Run one spec or one test with `npx playwright test tests/phase1-core.spec.ts` or `npx playwright test -g "duplicate"` (add
+`--headed` to watch it and `--debug` to step through it).
+
+Failure evidence: `e2e/playwright.config.ts` keeps a trace (`retain-on-failure`) and a screenshot (`only-on-failure`) for every
+failed test, and in CI also writes the HTML report. Inside `e2e/`, open a trace with
+`npx playwright show-trace test-results/<test>/trace.zip` and the report with `npx playwright show-report`. The CI artifact is
+named `playwright-report` and is kept for 7 days.
+
+Troubleshooting:
+
+- `The API and PostgreSQL must be running`: the API is not answering `http://127.0.0.1:5080/api/health/ready`. Run
+  `docker compose ps`, then `docker compose logs api`. Apply the migrations (`docker compose run --rm migrate`) before starting
+  the API.
+- `Executable doesn't exist` or the browser fails to launch: run `npm run install-browsers` in `e2e/` (on Linux add
+  `-- --with-deps`).
+- A test cannot find a button or list: the Vite server may be an old one started without `API_PROXY_TARGET`; stop it and let
+  Playwright start its own, or restart yours with the same value.
+- Port 5173 or 5080 is already used by something else: stop it, or set `E2E_WEB_URL` / `E2E_API_URL`.
+- Strange duplicates or slow lists after many runs: the tests never delete their data. Reset a disposable database with
+  `docker compose down -v` and start again.
+- A locator on a `<select>` never matches: a select's accessible name includes its chosen option, so use
+  `getByRole('combobox', { name: /^Label/ })` rather than an exact `getByLabel`. Locator waits have no timeout of their own and
+  last until the test timeout.
+
 ## Code base for an AI session
 
 The repository is public. Every AI session (accounts AC1 to AC6) takes the latest `main` itself: a shallow clone
