@@ -123,6 +123,8 @@ function RoleListDetail({ listId, onChanged, onDeleted }: DetailProps) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [confirmingTitleId, setConfirmingTitleId] = useState<string | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  // Which title form sent the last request, so its field errors reach that form only.
+  const [submitter, setSubmitter] = useState<'add' | 'edit' | null>(null)
 
   if (load.state.kind === 'loading') return <p role="status">Loading role list…</p>
   if (load.state.kind === 'error') {
@@ -147,6 +149,7 @@ function RoleListDetail({ listId, onChanged, onDeleted }: DetailProps) {
 
   async function onAdd(input: RoleTitleInput): Promise<boolean> {
     setNotice(null)
+    setSubmitter('add')
     const result = await action.run(() => addRoleTitle(listId, input))
     if (result.ok) {
       setNotice(`Added ${result.value.title}.`)
@@ -157,6 +160,7 @@ function RoleListDetail({ listId, onChanged, onDeleted }: DetailProps) {
 
   async function onSaveTitle(title: RoleTitle, input: RoleTitleInput): Promise<boolean> {
     setNotice(null)
+    setSubmitter('edit')
     const result = await action.run(() => updateRoleTitle(listId, title.id, input))
     if (result.ok) {
       setEditingId(null)
@@ -214,7 +218,7 @@ function RoleListDetail({ listId, onChanged, onDeleted }: DetailProps) {
                   initial={{ title: title.title, aliases: title.aliases.map((a) => a.alias) }}
                   submitLabel="Save title"
                   busy={action.busy}
-                  error={action.error}
+                  error={submitter === 'edit' ? action.error : null}
                   onSubmit={(input) => onSaveTitle(title, input)}
                   onCancel={() => setEditingId(null)}
                 />
@@ -279,7 +283,7 @@ function RoleListDetail({ listId, onChanged, onDeleted }: DetailProps) {
         initial={{ title: '', aliases: [] }}
         submitLabel="Add title"
         busy={action.busy}
-        error={editingId === null ? action.error : null}
+        error={submitter === 'add' ? action.error : null}
         clearOnSuccess
         onSubmit={onAdd}
       />

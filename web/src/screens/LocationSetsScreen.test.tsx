@@ -299,6 +299,38 @@ describe('LocationSetsScreen', () => {
     expect(within(form).getByLabelText('Covers')).toHaveAccessibleDescription('A scope is required.')
   })
 
+  it('keeps the field errors of a failed Add location out of an open Edit location form, and the reverse', async () => {
+    mockApi({
+      ...detailRoutes(),
+      'POST /api/location-sets/s1/locations': problem(400, 'validation', {
+        errors: { label: ['Add failed on label.'] },
+      }),
+      'PUT /api/location-sets/s1/locations/x1': problem(400, 'validation', {
+        errors: { label: ['Edit failed on label.'] },
+      }),
+    })
+    const user = userEvent.setup()
+    render(<LocationSetsScreen />)
+    const region = await openSet(user)
+
+    await user.click(within(region).getByRole('button', { name: 'Edit Ahmedabad' }))
+    const edit = within(region).getByRole('form', { name: 'Edit location' })
+    const add = within(region).getByRole('form', { name: 'Add location' })
+
+    await user.type(within(add).getByLabelText('Label'), 'Pune')
+    await user.click(within(add).getByRole('button', { name: 'Add location' }))
+    await within(region).findByRole('alert')
+    expect(within(add).getByLabelText('Label')).toHaveAccessibleDescription('Add failed on label.')
+    expect(within(edit).getByLabelText('Label')).not.toHaveAttribute('aria-invalid', 'true')
+    expect(within(edit).getByLabelText('Label')).not.toHaveAccessibleDescription('Add failed on label.')
+
+    await user.click(within(edit).getByRole('button', { name: 'Save location' }))
+    await vi.waitFor(() =>
+      expect(within(edit).getByLabelText('Label')).toHaveAccessibleDescription('Edit failed on label.'),
+    )
+    expect(within(add).getByLabelText('Label')).not.toHaveAttribute('aria-invalid', 'true')
+  })
+
   it('edits a location, including its scope and country', async () => {
     const calls = mockApi({
       ...detailRoutes(),

@@ -165,6 +165,8 @@ function LocationSetDetail({ setId, onChanged, onDeleted }: DetailProps) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  // Which location form sent the last request, so its field errors reach that form only.
+  const [submitter, setSubmitter] = useState<'add' | 'edit' | null>(null)
 
   if (load.state.kind === 'loading') return <p role="status">Loading location set…</p>
   if (load.state.kind === 'error') {
@@ -189,6 +191,7 @@ function LocationSetDetail({ setId, onChanged, onDeleted }: DetailProps) {
 
   async function onAdd(input: LocationInput): Promise<boolean> {
     setNotice(null)
+    setSubmitter('add')
     const result = await action.run(() => addLocation(setId, input))
     if (result.ok) {
       setNotice(`Added ${result.value.label}.`)
@@ -199,6 +202,7 @@ function LocationSetDetail({ setId, onChanged, onDeleted }: DetailProps) {
 
   async function onSaveLocation(location: Location, input: LocationInput): Promise<boolean> {
     setNotice(null)
+    setSubmitter('edit')
     const result = await action.run(() => updateLocation(setId, location.id, input))
     if (result.ok) {
       setEditingId(null)
@@ -260,7 +264,7 @@ function LocationSetDetail({ setId, onChanged, onDeleted }: DetailProps) {
                   }}
                   submitLabel="Save location"
                   busy={action.busy}
-                  error={action.error}
+                  error={submitter === 'edit' ? action.error : null}
                   onSubmit={(input) => onSaveLocation(location, input)}
                   onCancel={() => setEditingId(null)}
                 />
@@ -320,7 +324,7 @@ function LocationSetDetail({ setId, onChanged, onDeleted }: DetailProps) {
         initial={NEW_LOCATION}
         submitLabel="Add location"
         busy={action.busy}
-        error={editingId === null ? action.error : null}
+        error={submitter === 'add' ? action.error : null}
         clearOnSuccess
         onSubmit={onAdd}
       />

@@ -280,6 +280,35 @@ describe('RoleListsScreen', () => {
     expect(titleField).toHaveAccessibleDescription('A title is too long.')
   })
 
+  it('keeps the field errors of a failed Add title out of an open Edit title form, and the reverse', async () => {
+    mockApi({
+      ...listRoutes(),
+      'GET /api/role-lists/r1': { status: 200, body: detail },
+      'POST /api/role-lists/r1/titles': problem(400, 'validation', { errors: { title: ['Add failed on title.'] } }),
+      'PUT /api/role-lists/r1/titles/t1': problem(400, 'validation', { errors: { title: ['Edit failed on title.'] } }),
+    })
+    const user = userEvent.setup()
+    render(<RoleListsScreen />)
+    const region = await openList(user)
+
+    await user.click(within(region).getByRole('button', { name: 'Edit Software Engineer' }))
+    const edit = within(region).getByRole('form', { name: 'Edit title' })
+    const add = within(region).getByRole('form', { name: 'Add title' })
+
+    await user.type(within(add).getByLabelText('Primary title'), 'Analyst')
+    await user.click(within(add).getByRole('button', { name: 'Add title' }))
+    await within(region).findByRole('alert')
+    expect(within(add).getByLabelText('Primary title')).toHaveAccessibleDescription('Add failed on title.')
+    expect(within(edit).getByLabelText('Primary title')).not.toHaveAttribute('aria-invalid', 'true')
+    expect(within(edit).getByLabelText('Primary title')).not.toHaveAccessibleDescription('Add failed on title.')
+
+    await user.click(within(edit).getByRole('button', { name: 'Save title' }))
+    await vi.waitFor(() =>
+      expect(within(edit).getByLabelText('Primary title')).toHaveAccessibleDescription('Edit failed on title.'),
+    )
+    expect(within(add).getByLabelText('Primary title')).not.toHaveAttribute('aria-invalid', 'true')
+  })
+
   it('edits a title and replaces its whole alias set', async () => {
     const calls = mockApi({
       ...listRoutes(),
