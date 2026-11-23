@@ -209,8 +209,8 @@ export async function addLocationViaUi(
   const detail = page.getByRole('region', { name: `Location set ${setName}`, exact: true })
   const form = detail.getByRole('form', { name: 'Add location', exact: true })
   await form.getByLabel('Label', { exact: true }).fill(location.label)
-  await form.getByLabel('Covers', { exact: true }).selectOption({ label: location.scope })
-  if (location.countryCode) await form.getByLabel('Country code', { exact: true }).fill(location.countryCode)
+  await form.getByRole('combobox', { name: /^Covers/ }).selectOption({ label: location.scope })
+  if (location.countryCode) await form.getByLabel(/^Country code(?: \(optional\))?$/).fill(location.countryCode)
   await form.getByRole('button', { name: 'Add location', exact: true }).click()
   await expect(detail.getByRole('list', { name: 'Locations in this set', exact: true })).toContainText(shown)
 }
@@ -236,7 +236,7 @@ export async function fillJobForm(page: Page, values: JobFormFill): Promise<void
   if (values.title !== undefined) await form.getByLabel('Job title', { exact: true }).fill(values.title)
   if (values.applyUrl !== undefined) await form.getByLabel('Apply link', { exact: true }).fill(values.applyUrl)
   if (values.location !== undefined) await form.getByLabel('Location', { exact: true }).fill(values.location)
-  if (values.workMode !== undefined) await form.getByLabel('Work mode', { exact: true }).selectOption({ label: values.workMode })
+  if (values.workMode !== undefined) await form.getByRole('combobox', { name: /^Work mode/ }).selectOption({ label: values.workMode })
   if (values.requisitionId !== undefined) {
     await form.getByLabel('Requisition id', { exact: true }).fill(values.requisitionId)
   }
@@ -260,9 +260,9 @@ export async function openJobViaUi(page: Page, search: string, title: string, co
   await expect(jobDetail(page, title, company)).toBeVisible()
 }
 
-/** Chooses the candidate in "Applications for this job". */
+/** Chooses the candidate in "Applications for this job". A select's accessible name includes its chosen option, so match by prefix. */
 export async function chooseCandidateViaUi(page: Page, candidate: string): Promise<void> {
-  await page.getByLabel('Candidate', { exact: true }).selectOption({ label: candidate })
+  await page.getByRole('combobox', { name: /^Candidate/ }).selectOption({ label: candidate })
 }
 
 /** The open application's detail panel (the one whose heading starts with "Application:"). */

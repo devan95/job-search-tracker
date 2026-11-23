@@ -213,7 +213,7 @@ test('Phase 1 journey: setup, import, job, manual application, status history', 
 
   // 6. A later status, and the audit history that records every step
   const statusForm = page.getByRole('form', { name: 'Change status', exact: true })
-  await statusForm.getByLabel('Change status to', { exact: true }).selectOption({ label: 'Interview' })
+  await statusForm.getByRole('combobox', { name: /^Change status to/ }).selectOption({ label: 'Interview' })
   await statusForm.getByLabel('Reason (optional)', { exact: true }).fill('Recruiter call booked')
   await statusForm.getByRole('button', { name: 'Update status', exact: true }).click()
   await expect(panel.getByTestId('application-status')).toHaveText('Interview')
@@ -252,7 +252,7 @@ test('Phase 1 journey: setup, import, job, manual application, status history', 
 
   // The Applications tab shows the same application
   await gotoTab(page, 'Applications')
-  await page.getByLabel('Candidate filter', { exact: true }).selectOption({ label: candidate })
+  await page.getByRole('combobox', { name: /^Candidate filter/ }).selectOption({ label: candidate })
   const row = page.getByRole('button', { name: `Open application: ${title} at ${company} for ${candidate}`, exact: true })
   await expect(row).toContainText('Interview')
   await expect(row).toContainText('Applied (manual)')
@@ -359,7 +359,7 @@ test('validation and error states: job form, confirmation, corrections, stale st
 
   // Confirming an application needs the tick, and a future date is refused. Nothing becomes applied.
   await gotoTab(page, 'Applications')
-  await page.getByLabel('Candidate filter', { exact: true }).selectOption({ label: candidate.name })
+  await page.getByRole('combobox', { name: /^Candidate filter/ }).selectOption({ label: candidate.name })
   await page.getByRole('button', { name: `Open application: ${title} at ${company} for ${candidate.name}`, exact: true }).click()
   const panel = applicationPanel(page)
   await expect(panel.getByTestId('application-applied')).toHaveText('No')
@@ -377,8 +377,8 @@ test('validation and error states: job form, confirmation, corrections, stale st
   // A correction needs a reason, and cannot make an application applied.
   await panel.getByRole('button', { name: 'Correct', exact: true }).click()
   const correct = page.getByRole('form', { name: 'Correct application', exact: true })
-  await expect(correct.getByLabel('New status', { exact: true }).locator('option', { hasText: /^Applied$/ })).toHaveCount(0)
-  await correct.getByLabel('New status', { exact: true }).selectOption({ label: 'Withdrawn' })
+  await expect(correct.getByRole('combobox', { name: /^New status/ }).locator('option', { hasText: /^Applied$/ })).toHaveCount(0)
+  await correct.getByRole('combobox', { name: /^New status/ }).selectOption({ label: 'Withdrawn' })
   await correct.getByRole('button', { name: 'Save correction', exact: true }).click()
   await expect(correct).toContainText('A short reason is required.')
   expect((await apiGetApplication(request, application.id)).status).toBe('saved')
@@ -388,7 +388,7 @@ test('validation and error states: job form, confirmation, corrections, stale st
   const withdraw = await request.post(`${apiUrl}/api/applications/${application.id}/status`, { data: { status: 'withdrawn' } })
   expect(withdraw.status()).toBe(200)
   const statusForm = page.getByRole('form', { name: 'Change status', exact: true })
-  await statusForm.getByLabel('Change status to', { exact: true }).selectOption({ label: 'Pending verification' })
+  await statusForm.getByRole('combobox', { name: /^Change status to/ }).selectOption({ label: 'Pending verification' })
   await statusForm.getByRole('button', { name: 'Update status', exact: true }).click()
   await expect(panel.getByRole('alert')).toContainText('Status change not allowed')
   const afterStale = await apiGetApplication(request, application.id)

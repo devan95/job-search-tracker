@@ -216,28 +216,15 @@ section "Company-list import".
 ## End-to-end tests (Playwright)
 
 Browser tests live in `e2e/` and run against the real stack: PostgreSQL and the API from Docker Compose, and the Vite dev
-server, which Playwright starts itself (`web/` needs `npm ci` once). Three specs exist:
-
-- `smoke.spec.ts`: the app loads, and the API and database report healthy.
-- `lists-profiles.spec.ts`: the Lists & Profiles workflow (candidate, company lists, multiline import that reuses a
-  canonical company, search profile with several lists and work modes, `null` versus an explicit empty work-mode set, delete
-  restrictions, validation and duplicate feedback).
-- `phase1-core.spec.ts`: the Phase 1 acceptance run, the whole manual core in one journey. Synthetic candidate; company
-  list imported through preview and confirm; role list with an equivalent title; location set with a city, remote within a
-  country and remote worldwide (scopes kept separate from work modes); search profile selecting all three kinds of list;
-  a job added by hand whose company reuses the imported canonical employer, then retrieved and edited; an application tracked
-  as Saved and not applied, confirmed as applied manually (method Manual, date and time recorded), moved to Interview, with
-  the three-entry audit history checked in the UI and the API; closing and reopening the job without any change to the
-  application. Further tests cover repost and duplicate protection (same requisition id is blocked with no override, same apply
-  link is a warning, one application per candidate and canonical job, a second one is refused with `application_exists`),
-  validation and error states (job form, confirmation needs the tick, no future date, corrections need a reason and cannot make
-  an application applied, a stale status change, a job in use cannot be deleted) and an unreachable API.
-
-The tests drive the UI and use the API only to seed data and to read back what was stored. Helpers are in `support.ts` and
-`phase1-support.ts`. No application is marked applied except through the explicit confirmation step. Every name carries a
-random suffix, so the tests run in parallel and a re-run does not collide, but they never delete their data: use a
-disposable database. The specs fail at once, with a clear message, when the API or PostgreSQL is not ready. There is one
-E2E tool chain and one CI job (`e2e`); the Phase 1 acceptance adds specs only.
+server, which Playwright starts itself (`web/` needs `npm ci` once). Two specs exist: `smoke.spec.ts` (app loads, API and
+database report healthy) and `lists-profiles.spec.ts`, the Lists & Profiles workflow: a candidate, two company lists, a
+multiline import that reuses a canonical company across lists (whitespace, blank lines, commas, duplicate preview), a search
+profile with several lists and work modes, `null` versus an explicit empty work-mode set, delete restrictions and
+remove-before-delete, and the validation and duplicate feedback. The tests drive the UI and use the API only to seed data
+and to read back what was stored. Every name carries a random suffix, so the tests run in parallel and a re-run does not
+collide, but they never delete their data: use a disposable database. The spec fails at once, with a clear message, when the
+API or PostgreSQL is not ready. No new tooling was added; the tests build on the existing Playwright setup. The Phase 1
+acceptance run (Order 9) is a separate task.
 
 ```
 docker compose up -d --wait db
@@ -261,10 +248,28 @@ to touch your normal database, and `docker compose down` afterwards. A failed ru
 `e2e/test-results/` (traces and screenshots; both are git-ignored). CI runs this as the `e2e` job and uploads them as an
 artifact on failure. `e2e/` is excluded from SonarQube coverage (it contains tests only).
 
+### Phase 1 acceptance run (Order 9)
+
+`phase1-core.spec.ts` is the Phase 1 acceptance run mentioned above, with helpers in `phase1-support.ts`. It covers the whole
+manual core in one journey: a synthetic candidate; a company list imported through preview and confirm; a role list with an
+equivalent title; a location set with a city, remote within a country and remote worldwide (scopes kept separate from work
+modes); a search profile selecting all three kinds of list; a job added by hand whose company reuses the imported canonical
+employer, then retrieved and edited; an application tracked as Saved and not applied, confirmed as applied manually (method
+Manual, date and time recorded) and moved to Interview, with the three-entry audit history checked in the UI and the API; and
+closing and reopening the job without any change to the application. Further tests cover repost and duplicate protection (the
+same requisition id is blocked with no override, the same apply link is a warning, one application per candidate and
+canonical job, and a second one is refused with `application_exists`), validation and error states (job form, confirmation
+needs the tick and no future date, corrections need a reason and cannot make an application applied, a stale status change, a
+job in use cannot be deleted) and an unreachable API. No application is marked applied except through the explicit
+confirmation step. It adds specs only: there is one E2E tool chain and one CI job (`e2e`).
+
+Run one spec or one test with `npx playwright test tests/phase1-core.spec.ts` or `npx playwright test -g "duplicate"` (add
+`--headed` to watch it and `--debug` to step through it).
+
 Failure evidence: `e2e/playwright.config.ts` keeps a trace (`retain-on-failure`) and a screenshot (`only-on-failure`) for every
-failed test, and in CI also writes the HTML report. Open a trace with `npx playwright show-trace e2e/test-results/<test>/trace.zip`
-and the report with `npx playwright show-report e2e/playwright-report` (run from the repository root, or drop the `e2e/` prefix
-inside `e2e/`). The CI artifact is named `playwright-report` and is kept for 7 days.
+failed test, and in CI also writes the HTML report. Inside `e2e/`, open a trace with
+`npx playwright show-trace test-results/<test>/trace.zip` and the report with `npx playwright show-report`. The CI artifact is
+named `playwright-report` and is kept for 7 days.
 
 Troubleshooting:
 
@@ -278,8 +283,9 @@ Troubleshooting:
 - Port 5173 or 5080 is already used by something else: stop it, or set `E2E_WEB_URL` / `E2E_API_URL`.
 - Strange duplicates or slow lists after many runs: the tests never delete their data. Reset a disposable database with
   `docker compose down -v` and start again.
-- To run one spec or one test: `npx playwright test tests/phase1-core.spec.ts` or `npx playwright test -g "duplicate"`.
-  Add `--headed` to watch it and `--debug` to step through it.
+- A locator on a `<select>` never matches: a select's accessible name includes its chosen option, so use
+  `getByRole('combobox', { name: /^Label/ })` rather than an exact `getByLabel`. Locator waits have no timeout of their own and
+  last until the test timeout.
 
 ## Code base for an AI session
 
