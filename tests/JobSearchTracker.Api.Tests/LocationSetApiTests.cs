@@ -5,6 +5,8 @@ namespace JobSearchTracker.Api.Tests;
 
 public class LocationSetApiTests : ApiTestBase
 {
+    private static readonly string[] AllScopes = ["city", "state", "country", "remoteCountry", "remoteWorldwide"];
+
     private async Task<Guid> CreateSetAsync(string name)
     {
         var reply = await PostAsync("/api/location-sets", new { name });
@@ -60,8 +62,8 @@ public class LocationSetApiTests : ApiTestBase
 
         var set = await GetAsync($"/api/location-sets/{setId}");
         Assert.Equal(5, set.Body.GetProperty("locationCount").GetInt32());
-        var scopes = set.Body.GetProperty("locations").EnumerateArray().Select(l => l.GetProperty("scope").GetString()).ToHashSet();
-        Assert.Equal(new[] { "city", "state", "country", "remoteCountry", "remoteWorldwide" }.ToHashSet(), scopes);
+        var scopes = set.Body.GetProperty("locations").EnumerateArray().Select(l => l.GetProperty("scope").GetString()!).ToHashSet();
+        Assert.Equal(AllScopes.ToHashSet(), scopes);
     }
 
     [Fact]

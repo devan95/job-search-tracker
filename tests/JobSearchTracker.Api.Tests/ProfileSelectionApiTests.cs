@@ -5,6 +5,10 @@ namespace JobSearchTracker.Api.Tests;
 /// <summary>A search profile selects company lists, role lists and location sets independently of each other.</summary>
 public class ProfileSelectionApiTests : ApiTestBase
 {
+    private static readonly string[] RoleListNames = ["A roles", "B roles"];
+    private static readonly string[] LocationSetNames = ["A places", "B places"];
+    private static readonly string[] RemoteOnly = ["remote"];
+
     private async Task<Guid> CreateRoleListAsync(string name) => (await PostAsync("/api/role-lists", new { name })).Id;
     private async Task<Guid> CreateLocationSetAsync(string name) => (await PostAsync("/api/location-sets", new { name })).Id;
 
@@ -35,8 +39,8 @@ public class ProfileSelectionApiTests : ApiTestBase
         });
 
         Assert.Equal(HttpStatusCode.Created, created.Status);
-        Assert.Equal(new[] { "A roles", "B roles" }, created.Body.GetProperty("roleLists").EnumerateArray().Select(r => r.GetProperty("name").GetString()).ToArray());
-        Assert.Equal(new[] { "A places", "B places" }, created.Body.GetProperty("locationSets").EnumerateArray().Select(r => r.GetProperty("name").GetString()).ToArray());
+        Assert.Equal(RoleListNames, created.Body.GetProperty("roleLists").EnumerateArray().Select(r => r.GetProperty("name").GetString()).ToArray());
+        Assert.Equal(LocationSetNames, created.Body.GetProperty("locationSets").EnumerateArray().Select(r => r.GetProperty("name").GetString()).ToArray());
         var listed = await GetAsync($"/api/search-profiles?candidateId={candidateId}");
         Assert.Equal(2, listed[0].GetProperty("roleLists").GetArrayLength());
         Assert.Equal(2, listed[0].GetProperty("locationSets").GetArrayLength());
@@ -120,7 +124,7 @@ public class ProfileSelectionApiTests : ApiTestBase
     public async Task Selecting_and_unselecting_never_changes_the_profile_version_or_work_modes()
     {
         var candidateId = await CreateCandidateAsync();
-        var created = await PostAsync("/api/search-profiles", new { candidateId, name = "Versioned", workModes = new[] { "remote" } });
+        var created = await PostAsync("/api/search-profiles", new { candidateId, name = "Versioned", workModes = RemoteOnly });
         var roles = await CreateRoleListAsync("Roles");
         var places = await CreateLocationSetAsync("Places");
 
@@ -133,7 +137,7 @@ public class ProfileSelectionApiTests : ApiTestBase
 
         var after = await GetAsync($"/api/search-profiles/{created.Id}");
         Assert.Equal(1, after.Body.GetProperty("profileVersion").GetInt32());
-        Assert.Equal(new[] { "remote" }, after.Strings("workModes"));
+        Assert.Equal(RemoteOnly, after.Strings("workModes"));
     }
 
     [Fact]

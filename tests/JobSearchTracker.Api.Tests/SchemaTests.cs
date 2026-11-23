@@ -3,6 +3,21 @@ namespace JobSearchTracker.Api.Tests;
 /// <summary>AC1/AC2: asserts on the real PostgreSQL schema produced by the migration, not on EF metadata.</summary>
 public class SchemaTests : DatabaseTestBase
 {
+    private static readonly string[] ExpectedMigrations =
+    [
+        "20261114120000_InitialDataModel", "20261117060000_AddJobs", "20261118040000_AddApplications",
+        "20261118120000_AddRoleListsAndLocationSets",
+    ];
+
+    private static readonly string[] ExpectedUniqueIndexes =
+    [
+        "IX_applications_CandidateId_JobId", "IX_company_lists_NormalizedName", "IX_employers_NormalizedName",
+        "IX_jobs_EmployerId_NormalizedRequisitionId", "IX_location_set_locations_unique_no_country",
+        "IX_location_set_locations_unique_with_country", "IX_location_sets_NormalizedName",
+        "IX_role_list_titles_RoleListId_NormalizedTitle", "IX_role_lists_NormalizedName",
+        "IX_search_profiles_CandidateId_NormalizedName",
+    ];
+
     private static readonly string[] ExpectedTables =
     [
         "application_audit", "applications", "candidates", "company_list_employers", "company_lists", "employers",
@@ -26,7 +41,7 @@ public class SchemaTests : DatabaseTestBase
     public async Task Migration_history_table_records_exactly_the_four_migrations()
     {
         var applied = await Db.QueryAsync("SELECT \"MigrationId\" FROM \"__EFMigrationsHistory\"", r => r.GetString(0));
-        Assert.Equal(new[] {"20261114120000_InitialDataModel", "20261117060000_AddJobs", "20261118040000_AddApplications", "20261118120000_AddRoleListsAndLocationSets"}, applied.OrderBy(x => x, StringComparer.Ordinal));
+        Assert.Equal(ExpectedMigrations, applied.OrderBy(x => x, StringComparer.Ordinal));
     }
 
     [Fact]
@@ -146,14 +161,7 @@ public class SchemaTests : DatabaseTestBase
             r => r.GetString(0));
 
         Assert.Equal(
-            new[]
-            {
-                "IX_applications_CandidateId_JobId", "IX_company_lists_NormalizedName", "IX_employers_NormalizedName",
-                "IX_jobs_EmployerId_NormalizedRequisitionId", "IX_location_set_locations_unique_no_country",
-                "IX_location_set_locations_unique_with_country", "IX_location_sets_NormalizedName",
-                "IX_role_list_titles_RoleListId_NormalizedTitle", "IX_role_lists_NormalizedName",
-                "IX_search_profiles_CandidateId_NormalizedName",
-            }
+            ExpectedUniqueIndexes
                 .OrderBy(x => x, StringComparer.Ordinal),
             unique.OrderBy(x => x, StringComparer.Ordinal));
     }

@@ -4,6 +4,11 @@ namespace JobSearchTracker.Api.Tests;
 
 public class RoleListApiTests : ApiTestBase
 {
+    private static readonly string[] ExpectedAliases = ["Lead Business Analyst", "Sr. BA"];
+    private static readonly string[] OnlyX = ["x"];
+    private static readonly string[] PoAndLead = ["po", "Product Lead"];
+    private static readonly string[] OnlySm = ["SM"];
+
     private async Task<Guid> CreateRoleListAsync(string name)
     {
         var reply = await PostAsync("/api/role-lists", new { name });
@@ -65,7 +70,7 @@ public class RoleListApiTests : ApiTestBase
         Assert.Equal(2, list.Body.GetProperty("aliasCount").GetInt32());
         Assert.Equal("Product Owner", list.Body.GetProperty("titles")[0].GetProperty("title").GetString());
         var aliases = list.Body.GetProperty("titles")[1].GetProperty("aliases").EnumerateArray().Select(a => a.GetProperty("alias").GetString()).ToArray();
-        Assert.Equal(new[] { "Lead Business Analyst", "Sr. BA" }, aliases);
+        Assert.Equal(ExpectedAliases, aliases);
     }
 
     [Fact]
@@ -112,7 +117,7 @@ public class RoleListApiTests : ApiTestBase
         AssertInvalid(await AddTitleAsync(listId, "Product Owner", " "), "aliases");
         AssertInvalid(await AddTitleAsync(listId, "Product Owner", Enumerable.Range(0, 51).Select(i => $"Alias {i}").ToArray()), "aliases");
         AssertInvalid(await AddTitleAsync(listId, " "), "title");
-        AssertInvalid(await PostAsync($"/api/role-lists/{listId}/titles", new { aliases = new[] { "x" } }), "title");
+        AssertInvalid(await PostAsync($"/api/role-lists/{listId}/titles", new { aliases = OnlyX }), "title");
     }
 
     [Fact]
@@ -122,13 +127,13 @@ public class RoleListApiTests : ApiTestBase
         var title = await AddTitleAsync(listId, "Product Owner", "PO", "Owner");
         var other = await AddTitleAsync(listId, "Scrum Master", "SM");
 
-        var updated = await PutAsync($"/api/role-lists/{listId}/titles/{title.Id}", new { title = "Product Owner (PO)", aliases = new[] { "po", "Product Lead" } });
+        var updated = await PutAsync($"/api/role-lists/{listId}/titles/{title.Id}", new { title = "Product Owner (PO)", aliases = PoAndLead });
 
         Assert.Equal(HttpStatusCode.OK, updated.Status);
         Assert.Equal("Product Owner (PO)", updated.Str("title"));
-        Assert.Equal(new[] { "po", "Product Lead" }.OrderBy(x => x, StringComparer.Ordinal), updated.Body.GetProperty("aliases").EnumerateArray().Select(a => a.GetProperty("alias").GetString()!).OrderBy(x => x, StringComparer.Ordinal));
+        Assert.Equal(PoAndLead.OrderBy(x => x, StringComparer.Ordinal), updated.Body.GetProperty("aliases").EnumerateArray().Select(a => a.GetProperty("alias").GetString()!).OrderBy(x => x, StringComparer.Ordinal));
         AssertProblem(await PutAsync($"/api/role-lists/{listId}/titles/{title.Id}", new { title = "Scrum Master" }), HttpStatusCode.Conflict, "duplicate_title");
-        AssertProblem(await PutAsync($"/api/role-lists/{listId}/titles/{title.Id}", new { title = "Product Owner (PO)", aliases = new[] { "SM" } }), HttpStatusCode.Conflict, "duplicate_title");
+        AssertProblem(await PutAsync($"/api/role-lists/{listId}/titles/{title.Id}", new { title = "Product Owner (PO)", aliases = OnlySm }), HttpStatusCode.Conflict, "duplicate_title");
 
         // The rejected updates changed nothing; omitted aliases means no aliases.
         var cleared = await PutAsync($"/api/role-lists/{listId}/titles/{title.Id}", new { title = "Product Owner (PO)" });
