@@ -25,6 +25,11 @@ const listB = {
   employerCount: 5,
 }
 
+const roleA = { id: 'r1', name: 'Backend titles', titleCount: 2, aliasCount: 3 }
+const roleB = { id: 'r2', name: 'Data titles', titleCount: 1, aliasCount: 0 }
+const placeA = { id: 's1', name: 'Gujarat cities', locationCount: 2 }
+const placeB = { id: 's2', name: 'Remote scopes', locationCount: 2 }
+
 const profile = (over: Partial<SearchProfile> = {}): SearchProfile => ({
   id: 'p1',
   candidateId: 'c1',
@@ -34,6 +39,8 @@ const profile = (over: Partial<SearchProfile> = {}): SearchProfile => ({
   broadSearchEnabled: false,
   profileVersion: 1,
   companyLists: [],
+  roleLists: [],
+  locationSets: [],
   ...over,
 })
 
@@ -41,6 +48,8 @@ function baseRoutes(profiles: SearchProfile[] = []) {
   return {
     'GET /api/candidates': { status: 200, body: [asha, ravi] },
     'GET /api/company-lists': { status: 200, body: [listA, listB] },
+    'GET /api/role-lists': { status: 200, body: [roleA, roleB] },
+    'GET /api/location-sets': { status: 200, body: [placeA, placeB] },
     'GET /api/search-profiles': { status: 200, body: profiles },
   }
 }
@@ -50,6 +59,8 @@ describe('SearchProfilesScreen', () => {
     mockApi({
       'GET /api/candidates': { status: 200, body: [] },
       'GET /api/company-lists': { status: 200, body: [] },
+      'GET /api/role-lists': { status: 200, body: [] },
+      'GET /api/location-sets': { status: 200, body: [] },
       'GET /api/search-profiles': { status: 200, body: [] },
     })
     render(<SearchProfilesScreen />)
@@ -81,6 +92,8 @@ describe('SearchProfilesScreen', () => {
       candidateId: 'c1',
       name: 'Backend roles',
       companyListIds: ['l1', 'l2'],
+      roleListIds: [],
+      locationSetIds: [],
       companyMonitoringEnabled: true,
       broadSearchEnabled: false,
     })
@@ -346,5 +359,204 @@ describe('SearchProfilesScreen', () => {
     const fresh = await screen.findByDisplayValue('Renamed on server')
     expect(fresh).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Save profile' })).toBeEnabled()
+  })
+
+  it('creates a profile selecting several role lists and location sets with the company lists', async () => {
+    const calls = mockApi({
+      ...baseRoutes(),
+      'POST /api/search-profiles': { status: 201, body: profile() },
+    })
+    const user = userEvent.setup()
+    render(<SearchProfilesScreen />)
+
+    const form = await screen.findByRole('form', { name: 'New search profile' })
+    await user.selectOptions(within(form).getByLabelText('Candidate'), 'c1')
+    await user.type(within(form).getByLabelText('Profile name'), 'Criteria')
+    await user.click(within(form).getByLabelText('Remote-first startups'))
+    await user.click(within(form).getByLabelText('Backend titles'))
+    await user.click(within(form).getByLabelText('Data titles'))
+    await user.click(within(form).getByLabelText('Gujarat cities'))
+    await user.click(within(form).getByLabelText('Remote scopes'))
+    await user.click(within(form).getByLabelText('Remote scopes'))
+    await user.click(within(form).getByRole('button', { name: 'Create profile' }))
+
+    await vi.waitFor(() => expect(calls.some((c) => c.method === 'POST')).toBe(true))
+    expect(calls.find((c) => c.method === 'POST')?.body).toEqual({
+      candidateId: 'c1',
+      name: 'Criteria',
+      companyListIds: ['l2'],
+      roleListIds: ['r1', 'r2'],
+      locationSetIds: ['s1'],
+      companyMonitoringEnabled: false,
+      broadSearchEnabled: false,
+    })
+  })
+
+  it('says when there are no role lists or location sets to select', async () => {
+    mockApi({
+      ...baseRoutes(),
+      'GET /api/role-lists': { status: 200, body: [] },
+      'GET /api/location-sets': { status: 200, body: [] },
+    })
+    render(<SearchProfilesScreen />)
+
+    const form = await screen.findByRole('form', { name: 'New search profile' })
+    expect(within(form).getByText(/No role lists yet/)).toBeInTheDocument()
+    expect(within(form).getByText(/No location sets yet/)).toBeInTheDocument()
+  })
+
+  it('shows the selected role lists and location sets of each profile', async () => {
+    mockApi(
+      baseRoutes([
+        profile({
+          id: 'p1',
+          name: 'With criteria',
+          roleLists: [{ id: 'r1', name: roleA.name }],
+          locationSets: [
+            { id: 's1', name: placeA.name },
+            { id: 's2', name: placeB.name },
+          ],
+        }),
+        profile({ id: 'p2', name: 'Bare' }),
+      ]),
+    )
+    render(<SearchProfilesScreen />)
+
+    const items = within(await screen.findByRole('list', { name: 'Search profiles' })).getAllByRole('listitem')
+    expect(items[0]).toHaveTextContent('Role listsBackend titles')
+    expect(items[0]).toHaveTextContent('Location setsGujarat cities, Remote scopes')
+    expect(items[1]).toHaveTextContent('Role listsNone selected')
+    expect(items[1]).toHaveTextContent('Location setsNone selected')
+  })
+
+  it('selects and unselects role lists and location sets independently of company lists on save', async () => {
+    const calls = mockApi({
+      ...baseRoutes([
+        profile({
+          companyLists: [{ id: 'l1', name: listA.name, defaultWorkModes: [] }],
+          roleLists: [{ id: 'r1', name: roleA.name }],
+          locationSets: [{ id: 's1', name: placeA.name }],
+        }),
+      ]),
+      'PUT /api/search-profiles/p1': { status: 200, body: profile() },
+      'PUT /api/search-profiles/p1/role-lists/r2': { status: 204 },
+      'DELETE /api/search-profiles/p1/role-lists/r1': { status: 204 },
+      'PUT /api/search-profiles/p1/location-sets/s2': { status: 204 },
+      'DELETE /api/search-profiles/p1/location-sets/s1': { status: 204 },
+    })
+    const user = userEvent.setup()
+    render(<SearchProfilesScreen />)
+
+    await user.click(await screen.findByRole('button', { name: 'Edit Backend roles' }))
+    const form = screen.getByRole('form', { name: 'Edit search profile' })
+    expect(within(form).getByLabelText('Ahmedabad product companies')).toBeChecked()
+    expect(within(form).getByLabelText('Backend titles')).toBeChecked()
+    expect(within(form).getByLabelText('Gujarat cities')).toBeChecked()
+    await user.click(within(form).getByLabelText('Backend titles'))
+    await user.click(within(form).getByLabelText('Data titles'))
+    await user.click(within(form).getByLabelText('Gujarat cities'))
+    await user.click(within(form).getByLabelText('Remote scopes'))
+    await user.click(within(form).getByRole('button', { name: 'Save profile' }))
+
+    await vi.waitFor(() =>
+      expect(calls.some((c) => c.method === 'DELETE' && c.path.endsWith('/location-sets/s1'))).toBe(true),
+    )
+    const writes = calls.filter((c) => c.method !== 'GET').map((c) => `${c.method} ${c.path}`)
+    expect(writes).toEqual([
+      'PUT /api/search-profiles/p1',
+      'PUT /api/search-profiles/p1/role-lists/r2',
+      'DELETE /api/search-profiles/p1/role-lists/r1',
+      'PUT /api/search-profiles/p1/location-sets/s2',
+      'DELETE /api/search-profiles/p1/location-sets/s1',
+    ])
+  })
+
+  it('keeps the company-list selection, work-mode override and discovery flags when criteria change', async () => {
+    const calls = mockApi({
+      ...baseRoutes([
+        profile({
+          workModes: ['remote'],
+          companyMonitoringEnabled: true,
+          broadSearchEnabled: true,
+          companyLists: [{ id: 'l1', name: listA.name, defaultWorkModes: [] }],
+        }),
+      ]),
+      'PUT /api/search-profiles/p1': { status: 200, body: profile() },
+      'PUT /api/search-profiles/p1/role-lists/r1': { status: 204 },
+    })
+    const user = userEvent.setup()
+    render(<SearchProfilesScreen />)
+
+    await user.click(await screen.findByRole('button', { name: 'Edit Backend roles' }))
+    const form = screen.getByRole('form', { name: 'Edit search profile' })
+    await user.click(within(form).getByLabelText('Backend titles'))
+    await user.click(within(form).getByRole('button', { name: 'Save profile' }))
+
+    await vi.waitFor(() => expect(calls.some((c) => c.path.endsWith('/role-lists/r1'))).toBe(true))
+    expect(calls.find((c) => c.method === 'PUT' && c.path === '/api/search-profiles/p1')?.body).toEqual({
+      name: 'Backend roles',
+      workModes: ['remote'],
+      companyMonitoringEnabled: true,
+      broadSearchEnabled: true,
+    })
+    expect(calls.some((c) => c.path.includes('/company-lists/'))).toBe(false)
+  })
+
+  it('shows the server state and the error when a role-list selection fails part-way', async () => {
+    mockApi({
+      ...baseRoutes([profile()]),
+      'PUT /api/search-profiles/p1': { status: 200, body: profile() },
+      'PUT /api/search-profiles/p1/role-lists/r1': problem(404, 'not_found'),
+    })
+    const user = userEvent.setup()
+    render(<SearchProfilesScreen />)
+
+    await user.click(await screen.findByRole('button', { name: 'Edit Backend roles' }))
+    const form = screen.getByRole('form', { name: 'Edit search profile' })
+    await user.click(within(form).getByLabelText('Backend titles'))
+    await user.click(within(form).getByRole('button', { name: 'Save profile' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('No longer exists')
+    expect(screen.getByRole('form', { name: 'Edit search profile' })).toBeInTheDocument()
+  })
+
+  it('shows the API messages for role-list and location-set selections and links them to their fieldsets', async () => {
+    mockApi({
+      ...baseRoutes(),
+      'POST /api/search-profiles': problem(400, 'validation', {
+        errors: {
+          roleListIds: ['One or more role lists do not exist.'],
+          locationSetIds: ['One or more location sets do not exist.'],
+        },
+      }),
+    })
+    const user = userEvent.setup()
+    render(<SearchProfilesScreen />)
+
+    const form = await screen.findByRole('form', { name: 'New search profile' })
+    await user.selectOptions(within(form).getByLabelText('Candidate'), 'c1')
+    await user.type(within(form).getByLabelText('Profile name'), 'Stale')
+    await user.click(within(form).getByLabelText('Backend titles'))
+    await user.click(within(form).getByLabelText('Gujarat cities'))
+    await user.click(within(form).getByRole('button', { name: 'Create profile' }))
+
+    const roles = await within(form).findByRole('group', { name: 'Role lists' })
+    expect(roles).toHaveAttribute('aria-invalid', 'true')
+    expect(roles).toHaveAccessibleDescription('One or more role lists do not exist.')
+    const places = within(form).getByRole('group', { name: 'Location sets' })
+    expect(places).toHaveAccessibleDescription('One or more location sets do not exist.')
+    expect(within(form).getByRole('group', { name: 'Company lists' })).not.toHaveAttribute('aria-invalid')
+  })
+
+  it('blocks the screen with an error when role lists cannot be loaded', async () => {
+    mockApi({
+      ...baseRoutes(),
+      'GET /api/role-lists': problem(500, 'unexpected'),
+    })
+    render(<SearchProfilesScreen />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Server error')
+    expect(screen.getByRole('button', { name: 'Reload' })).toBeInTheDocument()
+    expect(screen.queryByRole('form', { name: 'New search profile' })).not.toBeInTheDocument()
   })
 })

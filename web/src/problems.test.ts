@@ -29,6 +29,10 @@ describe('describeError', () => {
       [{ status: 409, code: 'candidate_has_profiles', searchProfileCount: 2 }, 'Candidate still has search profiles'],
       [{ status: 409, code: 'company_list_in_use', searchProfileCount: 1 }, 'List is in use'],
       [{ status: 409, code: 'employer_in_company_list', companyListCount: 2 }, 'Company is still in a list'],
+      [{ status: 409, code: 'role_list_in_use', searchProfileCount: 1 }, 'Role list is in use'],
+      [{ status: 409, code: 'location_set_in_use', searchProfileCount: 3 }, 'Location set is in use'],
+      [{ status: 409, code: 'duplicate_title' }, 'Title already in this list'],
+      [{ status: 409, code: 'duplicate_location' }, 'Location already in this set'],
     ]
     for (const [problem, heading] of cases) {
       expect(describeError(problemError(problem)).heading).toBe(heading)

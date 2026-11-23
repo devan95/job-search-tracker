@@ -1,19 +1,28 @@
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useId, useState, type FormEvent, type ReactNode } from 'react'
 import {
   createSearchProfile,
   deleteSearchProfile,
   listCandidates,
   listCompanyLists,
+  listLocationSets,
+  listRoleLists,
   listSearchProfiles,
   selectCompanyList,
+  selectLocationSet,
+  selectRoleList,
   unselectCompanyList,
+  unselectLocationSet,
+  unselectRoleList,
   updateSearchProfile,
   type ApiError,
   type Candidate,
   type CompanyListSummary,
+  type LocationSetSummary,
+  type RoleListSummary,
   type SearchProfile,
   type WorkMode,
 } from '../api'
+import { errorText, FieldError } from '../components/FieldError'
 import { ProblemAlert } from '../components/ProblemAlert'
 import { WorkModeField } from '../components/WorkModeFields'
 import { useAction, useLoad } from '../hooks'
@@ -25,6 +34,8 @@ interface ProfileValues {
   candidateId: string
   name: string
   companyListIds: string[]
+  roleListIds: string[]
+  locationSetIds: string[]
   /** null = inherit; [] = explicit empty set. */
   workModes: WorkMode[] | null
   companyMonitoringEnabled: boolean
@@ -35,6 +46,8 @@ const NEW_PROFILE: ProfileValues = {
   candidateId: '',
   name: '',
   companyListIds: [],
+  roleListIds: [],
+  locationSetIds: [],
   workModes: null,
   companyMonitoringEnabled: false,
   broadSearchEnabled: false,
@@ -45,6 +58,8 @@ interface FormProps {
   initial: ProfileValues
   submitLabel: string
   lists: CompanyListSummary[]
+  roleLists: RoleListSummary[]
+  locationSets: LocationSetSummary[]
   /** Create mode: the candidate can be chosen. */
   candidates?: Candidate[]
   /** Edit mode: the candidate is fixed and only shown. */
@@ -61,6 +76,8 @@ function ProfileForm({
   initial,
   submitLabel,
   lists,
+  roleLists,
+  locationSets,
   candidates,
   fixedCandidateName,
   busy,
@@ -72,11 +89,20 @@ function ProfileForm({
   const [candidateId, setCandidateId] = useState(initial.candidateId)
   const [name, setName] = useState(initial.name)
   const [listIds, setListIds] = useState(initial.companyListIds)
+  const [roleListIds, setRoleListIds] = useState(initial.roleListIds)
+  const [locationSetIds, setLocationSetIds] = useState(initial.locationSetIds)
   const [workModes, setWorkModes] = useState<WorkMode[] | null>(initial.workModes)
   const [monitoring, setMonitoring] = useState(initial.companyMonitoringEnabled)
   const [broad, setBroad] = useState(initial.broadSearchEnabled)
   const [nameError, setNameError] = useState<string | null>(null)
   const [candidateError, setCandidateError] = useState<string | null>(null)
+  const ids = useId()
+  const companyErrorId = `${ids}-company-lists-error`
+  const roleErrorId = `${ids}-role-lists-error`
+  const locationErrorId = `${ids}-location-sets-error`
+  const companyMessage = errorText(null, fieldMessages(error, 'companyListIds'))
+  const roleMessage = errorText(null, fieldMessages(error, 'roleListIds'))
+  const locationMessage = errorText(null, fieldMessages(error, 'locationSetIds'))
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -90,6 +116,8 @@ function ProfileForm({
       candidateId,
       name: name.trim(),
       companyListIds: listIds,
+      roleListIds,
+      locationSetIds,
       workModes,
       companyMonitoringEnabled: monitoring,
       broadSearchEnabled: broad,
@@ -98,6 +126,8 @@ function ProfileForm({
       setCandidateId(initial.candidateId)
       setName(initial.name)
       setListIds(initial.companyListIds)
+      setRoleListIds(initial.roleListIds)
+      setLocationSetIds(initial.locationSetIds)
       setWorkModes(initial.workModes)
       setMonitoring(initial.companyMonitoringEnabled)
       setBroad(initial.broadSearchEnabled)
@@ -143,7 +173,11 @@ function ProfileForm({
       </label>
       {nameError && <p className="field-error">{nameError}</p>}
 
-      <fieldset disabled={busy} aria-invalid={fieldMessages(error, 'companyListIds').length > 0 || undefined}>
+      <fieldset
+        disabled={busy}
+        aria-invalid={companyMessage !== null || undefined}
+        aria-describedby={companyMessage !== null ? companyErrorId : undefined}
+      >
         <legend>Company lists</legend>
         {lists.length === 0 && (
           <p className="hint">No company lists yet. Create one in Company lists, or save the profile without any.</p>
@@ -162,6 +196,59 @@ function ProfileForm({
             {list.name}
           </label>
         ))}
+        <FieldError id={companyErrorId} message={companyMessage} />
+      </fieldset>
+
+      <fieldset
+        disabled={busy}
+        aria-invalid={roleMessage !== null || undefined}
+        aria-describedby={roleMessage !== null ? roleErrorId : undefined}
+      >
+        <legend>Role lists</legend>
+        {roleLists.length === 0 && (
+          <p className="hint">No role lists yet. Create one in Role lists, or save the profile without any.</p>
+        )}
+        {roleLists.map((list) => (
+          <label key={list.id} className="inline">
+            <input
+              type="checkbox"
+              checked={roleListIds.includes(list.id)}
+              onChange={(e) =>
+                setRoleListIds((prev) =>
+                  e.target.checked ? [...prev, list.id] : prev.filter((x) => x !== list.id),
+                )
+              }
+            />{' '}
+            {list.name}
+          </label>
+        ))}
+        <FieldError id={roleErrorId} message={roleMessage} />
+      </fieldset>
+
+      <fieldset
+        disabled={busy}
+        aria-invalid={locationMessage !== null || undefined}
+        aria-describedby={locationMessage !== null ? locationErrorId : undefined}
+      >
+        <legend>Location sets</legend>
+        {locationSets.length === 0 && (
+          <p className="hint">No location sets yet. Create one in Location sets, or save the profile without any.</p>
+        )}
+        {locationSets.map((set) => (
+          <label key={set.id} className="inline">
+            <input
+              type="checkbox"
+              checked={locationSetIds.includes(set.id)}
+              onChange={(e) =>
+                setLocationSetIds((prev) =>
+                  e.target.checked ? [...prev, set.id] : prev.filter((x) => x !== set.id),
+                )
+              }
+            />{' '}
+            {set.name}
+          </label>
+        ))}
+        <FieldError id={locationErrorId} message={locationMessage} />
       </fieldset>
 
       <WorkModeField
@@ -204,14 +291,27 @@ function ProfileForm({
   )
 }
 
+/** Applies the difference between the selected ids and the wanted ids, one request each. */
+async function syncSelection(
+  before: string[],
+  wanted: string[],
+  select: (id: string) => Promise<void>,
+  unselect: (id: string) => Promise<void>,
+): Promise<void> {
+  for (const id of wanted.filter((x) => !before.includes(x))) await select(id)
+  for (const id of before.filter((x) => !wanted.includes(x))) await unselect(id)
+}
+
 interface LoadedProps {
   candidates: Candidate[]
   lists: CompanyListSummary[]
+  roleLists: RoleListSummary[]
+  locationSets: LocationSetSummary[]
   profiles: SearchProfile[]
   reload: () => Promise<void>
 }
 
-function ProfilesLoaded({ candidates, lists, profiles, reload }: LoadedProps) {
+function ProfilesLoaded({ candidates, lists, roleLists, locationSets, profiles, reload }: LoadedProps) {
   const createAction = useAction()
   const rowAction = useAction()
   // True from the start of a save until the reload that follows it has finished.
@@ -250,13 +350,24 @@ function ProfilesLoaded({ candidates, lists, profiles, reload }: LoadedProps) {
         companyMonitoringEnabled: values.companyMonitoringEnabled,
         broadSearchEnabled: values.broadSearchEnabled,
       })
-      const before = profile.companyLists.map((l) => l.id)
-      for (const id of values.companyListIds.filter((x) => !before.includes(x))) {
-        await selectCompanyList(profile.id, id)
-      }
-      for (const id of before.filter((x) => !values.companyListIds.includes(x))) {
-        await unselectCompanyList(profile.id, id)
-      }
+      await syncSelection(
+        profile.companyLists.map((l) => l.id),
+        values.companyListIds,
+        (id) => selectCompanyList(profile.id, id),
+        (id) => unselectCompanyList(profile.id, id),
+      )
+      await syncSelection(
+        profile.roleLists.map((l) => l.id),
+        values.roleListIds,
+        (id) => selectRoleList(profile.id, id),
+        (id) => unselectRoleList(profile.id, id),
+      )
+      await syncSelection(
+        profile.locationSets.map((l) => l.id),
+        values.locationSetIds,
+        (id) => selectLocationSet(profile.id, id),
+        (id) => unselectLocationSet(profile.id, id),
+      )
     })
     // Some steps may have applied even when a later one failed: show the server's state.
     await reload()
@@ -281,6 +392,8 @@ function ProfilesLoaded({ candidates, lists, profiles, reload }: LoadedProps) {
             initial={NEW_PROFILE}
             submitLabel="Create profile"
             lists={lists}
+            roleLists={roleLists}
+            locationSets={locationSets}
             candidates={candidates}
             busy={createAction.busy}
             error={createAction.error}
@@ -328,12 +441,16 @@ function ProfilesLoaded({ candidates, lists, profiles, reload }: LoadedProps) {
                     candidateId: profile.candidateId,
                     name: profile.name,
                     companyListIds: profile.companyLists.map((l) => l.id),
+                    roleListIds: profile.roleLists.map((l) => l.id),
+                    locationSetIds: profile.locationSets.map((l) => l.id),
                     workModes: profile.workModes,
                     companyMonitoringEnabled: profile.companyMonitoringEnabled,
                     broadSearchEnabled: profile.broadSearchEnabled,
                   }}
                   submitLabel="Save profile"
                   lists={lists}
+                  roleLists={roleLists}
+                  locationSets={locationSets}
                   fixedCandidateName={candidateName(profile.candidateId)}
                   busy={rowBusy}
                   error={rowAction.error}
@@ -351,6 +468,18 @@ function ProfilesLoaded({ candidates, lists, profiles, reload }: LoadedProps) {
                       {profile.companyLists.length === 0
                         ? 'None selected'
                         : profile.companyLists.map((l) => l.name).join(', ')}
+                    </dd>
+                    <dt>Role lists</dt>
+                    <dd>
+                      {profile.roleLists.length === 0
+                        ? 'None selected'
+                        : profile.roleLists.map((l) => l.name).join(', ')}
+                    </dd>
+                    <dt>Location sets</dt>
+                    <dd>
+                      {profile.locationSets.length === 0
+                        ? 'None selected'
+                        : profile.locationSets.map((l) => l.name).join(', ')}
                     </dd>
                     <dt>Work modes</dt>
                     <dd>
@@ -420,12 +549,16 @@ function ProfilesLoaded({ candidates, lists, profiles, reload }: LoadedProps) {
 export default function SearchProfilesScreen() {
   const candidates = useLoad(listCandidates)
   const lists = useLoad(listCompanyLists)
+  const roleLists = useLoad(listRoleLists)
+  const locationSets = useLoad(listLocationSets)
   const profiles = useLoad(listSearchProfiles)
 
-  const failed = [candidates, lists, profiles].find((l) => l.state.kind === 'error')
+  const failed = [candidates, lists, roleLists, locationSets, profiles].find((l) => l.state.kind === 'error')
   const reloadAll = () => {
     void candidates.reload()
     void lists.reload()
+    void roleLists.reload()
+    void locationSets.reload()
     void profiles.reload()
   }
 
@@ -435,12 +568,16 @@ export default function SearchProfilesScreen() {
   } else if (
     candidates.state.kind === 'ready' &&
     lists.state.kind === 'ready' &&
+    roleLists.state.kind === 'ready' &&
+    locationSets.state.kind === 'ready' &&
     profiles.state.kind === 'ready'
   ) {
     body = (
       <ProfilesLoaded
         candidates={candidates.state.data}
         lists={lists.state.data}
+        roleLists={roleLists.state.data}
+        locationSets={locationSets.state.data}
         profiles={profiles.state.data}
         reload={profiles.reload}
       />
@@ -453,7 +590,7 @@ export default function SearchProfilesScreen() {
     <section aria-labelledby="profiles-heading">
       <h2 id="profiles-heading">Search profiles</h2>
       <p className="hint">
-        A search profile ties a candidate to company lists and decides which kinds of discovery are on.
+        A search profile ties a candidate to company lists, role lists and location sets, and decides which kinds of discovery are on.
       </p>
       {body}
     </section>

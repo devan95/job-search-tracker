@@ -123,6 +123,28 @@ export function describeError(error: ApiError, subject = 'item'): ProblemView {
         'List is in use',
         `${count(p.searchProfileCount, 'search profile', 'search profiles')} still select this list. Unselect it in those profiles first, then delete it.`,
       )
+    case 'role_list_in_use':
+      return view(
+        'Role list is in use',
+        `${count(p.searchProfileCount, 'search profile', 'search profiles')} still select this role list. Unselect it in those profiles first, then delete it.`,
+      )
+    case 'location_set_in_use':
+      return view(
+        'Location set is in use',
+        `${count(p.searchProfileCount, 'search profile', 'search profiles')} still select this location set. Unselect it in those profiles first, then delete it.`,
+      )
+    case 'duplicate_title':
+      return view(
+        'Title already in this list',
+        p.detail ??
+          'This title or one of its aliases is already used in this role list. Titles and aliases share one namespace per list, compared ignoring case and extra spaces. Nothing was saved.',
+      )
+    case 'duplicate_location':
+      return view(
+        'Location already in this set',
+        p.detail ??
+          'This set already holds a location with the same label, scope and country. Nothing was saved.',
+      )
     case 'employer_in_company_list':
       return view(
         'Company is still in a list',
