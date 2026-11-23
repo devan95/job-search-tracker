@@ -4,17 +4,21 @@ import CandidatesScreen from './screens/CandidatesScreen'
 import ApplicationsScreen from './screens/ApplicationsScreen'
 import CompanyListsScreen from './screens/CompanyListsScreen'
 import JobsScreen from './screens/JobsScreen'
+import LocationSetsScreen from './screens/LocationSetsScreen'
+import RoleListsScreen from './screens/RoleListsScreen'
 import SearchProfilesScreen from './screens/SearchProfilesScreen'
 
 type ViewState = { kind: 'checking' } | HealthResult
 
-type Section = 'candidates' | 'lists' | 'profiles' | 'jobs' | 'applications'
+type Section = 'candidates' | 'lists' | 'roles' | 'locations' | 'profiles' | 'jobs' | 'applications'
 
-// Setup order: a candidate, then company lists, then a search profile that ties them together;
+// Setup order: a candidate, then company lists, role lists and location sets, then a search profile that ties them together;
 // then the jobs entered by hand and the applications tracked for them.
 const SECTIONS: { id: Section; label: string }[] = [
   { id: 'candidates', label: 'Candidates' },
   { id: 'lists', label: 'Company lists' },
+  { id: 'roles', label: 'Role lists' },
+  { id: 'locations', label: 'Location sets' },
   { id: 'profiles', label: 'Search profiles' },
   { id: 'jobs', label: 'Jobs' },
   { id: 'applications', label: 'Applications' },
@@ -99,6 +103,8 @@ export default function App() {
       <div role="tabpanel" id={`panel-${section}`} aria-labelledby={`tab-${section}`}>
         {section === 'candidates' && <CandidatesScreen />}
         {section === 'lists' && <CompanyListsScreen />}
+        {section === 'roles' && <RoleListsScreen />}
+        {section === 'locations' && <LocationSetsScreen />}
         {section === 'profiles' && <SearchProfilesScreen />}
         {section === 'jobs' && <JobsScreen />}
         {section === 'applications' && <ApplicationsScreen />}

@@ -1,12 +1,23 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  addLocation,
+  addRoleTitle,
   createCandidate,
+  createRoleList,
   createSearchProfile,
   deleteCandidate,
   fetchHealth,
+  getRoleList,
   listCandidates,
   readProblem,
+  renameRoleList,
   resolveEmployer,
+  selectLocationSet,
+  selectRoleList,
+  unselectLocationSet,
+  unselectRoleList,
+  updateLocation,
+  updateRoleTitle,
   updateSearchProfile,
 } from './api'
 
@@ -198,6 +209,8 @@ describe('management API client', () => {
       candidateId: 'c1',
       name: 'Backend',
       companyListIds: [],
+      roleListIds: [],
+      locationSetIds: [],
       companyMonitoringEnabled: false,
       broadSearchEnabled: false,
     }
@@ -221,5 +234,61 @@ describe('management API client', () => {
     })
     const body = JSON.parse(String(lastCall(spy).init.body)) as Record<string, unknown>
     expect(body.workModes).toBeNull()
+  })
+
+  it('calls the documented role-list endpoints', async () => {
+    const spy = stub(() => new Response('{}', { status: 200 }))
+    const seen = async (run: () => Promise<unknown>) => {
+      spy.mockClear()
+      await run()
+      const { url, init } = lastCall(spy)
+      return { url, method: init.method, body: init.body }
+    }
+    expect(await seen(() => getRoleList('r 1'))).toMatchObject({ url: '/api/role-lists/r%201', method: 'GET' })
+    expect(await seen(() => createRoleList('Backend'))).toEqual({
+      url: '/api/role-lists',
+      method: 'POST',
+      body: '{"name":"Backend"}',
+    })
+    expect(await seen(() => renameRoleList('r1', 'New'))).toMatchObject({ url: '/api/role-lists/r1', method: 'PUT' })
+    expect(await seen(() => addRoleTitle('r1', { title: 'SWE', aliases: ['SDE'] }))).toEqual({
+      url: '/api/role-lists/r1/titles',
+      method: 'POST',
+      body: '{"title":"SWE","aliases":["SDE"]}',
+    })
+    expect(await seen(() => updateRoleTitle('r1', 't1', { title: 'SWE', aliases: [] }))).toMatchObject({
+      url: '/api/role-lists/r1/titles/t1',
+      method: 'PUT',
+      body: '{"title":"SWE","aliases":[]}',
+    })
+  })
+
+  it('calls the documented location-set endpoints', async () => {
+    const spy = stub(() => new Response('{}', { status: 200 }))
+    await addLocation('s1', { label: 'Remote India', scope: 'remoteCountry', countryCode: 'IN' })
+    let { url, init } = lastCall(spy)
+    expect(url).toBe('/api/location-sets/s1/locations')
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(String(init.body))).toEqual({ label: 'Remote India', scope: 'remoteCountry', countryCode: 'IN' })
+
+    spy.mockClear()
+    await updateLocation('s1', 'x1', { label: 'Anywhere', scope: 'remoteWorldwide', countryCode: null })
+    ;({ url, init } = lastCall(spy))
+    expect(url).toBe('/api/location-sets/s1/locations/x1')
+    expect(init.method).toBe('PUT')
+  })
+
+  it('selects and unselects role lists and location sets on a profile', async () => {
+    const spy = stub(() => new Response(null, { status: 204 }))
+    const seen = async (run: () => Promise<unknown>) => {
+      spy.mockClear()
+      await run()
+      const { url, init } = lastCall(spy)
+      return `${init.method} ${url}`
+    }
+    expect(await seen(() => selectRoleList('p1', 'r1'))).toBe('PUT /api/search-profiles/p1/role-lists/r1')
+    expect(await seen(() => unselectRoleList('p1', 'r1'))).toBe('DELETE /api/search-profiles/p1/role-lists/r1')
+    expect(await seen(() => selectLocationSet('p1', 's1'))).toBe('PUT /api/search-profiles/p1/location-sets/s1')
+    expect(await seen(() => unselectLocationSet('p1', 's1'))).toBe('DELETE /api/search-profiles/p1/location-sets/s1')
   })
 })

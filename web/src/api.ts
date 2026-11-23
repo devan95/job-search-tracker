@@ -78,6 +78,16 @@ export interface SelectedCompanyList {
   defaultWorkModes: WorkMode[]
 }
 
+export interface SelectedRoleList {
+  id: string
+  name: string
+}
+
+export interface SelectedLocationSet {
+  id: string
+  name: string
+}
+
 export interface SearchProfile {
   id: string
   candidateId: string
@@ -88,12 +98,16 @@ export interface SearchProfile {
   broadSearchEnabled: boolean
   profileVersion: number
   companyLists: SelectedCompanyList[]
+  roleLists: SelectedRoleList[]
+  locationSets: SelectedLocationSet[]
 }
 
 export interface SearchProfileCreateInput {
   candidateId: string
   name: string
   companyListIds: string[]
+  roleListIds: string[]
+  locationSetIds: string[]
   workModes: WorkMode[] | null
   companyMonitoringEnabled: boolean
   broadSearchEnabled: boolean
@@ -453,6 +467,118 @@ export async function importCompanies(listId: string, text: string): Promise<Imp
   )
 }
 
+// Role lists (docs/api.md, "Role lists"): primary titles, each with equivalent-title aliases.
+export interface RoleAlias {
+  id: string
+  alias: string
+}
+
+export interface RoleTitle {
+  id: string
+  title: string
+  aliases: RoleAlias[]
+}
+
+export interface RoleListSummary {
+  id: string
+  name: string
+  titleCount: number
+  aliasCount: number
+}
+
+export interface RoleListDetail extends RoleListSummary {
+  titles: RoleTitle[]
+}
+
+/** Create and PUT share one body; PUT replaces the title's whole alias set. */
+export interface RoleTitleInput {
+  title: string
+  aliases: string[]
+}
+
+export const listRoleLists = (): Promise<RoleListSummary[]> =>
+  requestList(`/role-lists?${PAGE}`)
+
+export const getRoleList = (listId: string): Promise<RoleListDetail> =>
+  request('GET', `/role-lists/${id(listId)}`)
+
+export const createRoleList = (name: string): Promise<RoleListDetail> =>
+  request('POST', '/role-lists', { name })
+
+export const renameRoleList = (listId: string, name: string): Promise<RoleListDetail> =>
+  request('PUT', `/role-lists/${id(listId)}`, { name })
+
+export const deleteRoleList = (listId: string): Promise<void> =>
+  request('DELETE', `/role-lists/${id(listId)}`)
+
+export const addRoleTitle = (listId: string, input: RoleTitleInput): Promise<RoleTitle> =>
+  request('POST', `/role-lists/${id(listId)}/titles`, input)
+
+export const updateRoleTitle = (
+  listId: string,
+  titleId: string,
+  input: RoleTitleInput,
+): Promise<RoleTitle> =>
+  request('PUT', `/role-lists/${id(listId)}/titles/${id(titleId)}`, input)
+
+export const deleteRoleTitle = (listId: string, titleId: string): Promise<void> =>
+  request('DELETE', `/role-lists/${id(listId)}/titles/${id(titleId)}`)
+
+// Location sets (docs/api.md, "Location sets"). Scope is what a location covers; it is not a work mode.
+export type LocationScope = 'city' | 'state' | 'country' | 'remoteCountry' | 'remoteWorldwide'
+
+export interface Location {
+  id: string
+  label: string
+  scope: LocationScope
+  countryCode: string | null
+}
+
+export interface LocationSetSummary {
+  id: string
+  name: string
+  locationCount: number
+}
+
+export interface LocationSetDetail extends LocationSetSummary {
+  locations: Location[]
+}
+
+export interface LocationInput {
+  label: string
+  scope: LocationScope
+  /** Required for `remoteCountry`, forbidden for `remoteWorldwide`, optional otherwise. */
+  countryCode: string | null
+}
+
+export const listLocationSets = (): Promise<LocationSetSummary[]> =>
+  requestList(`/location-sets?${PAGE}`)
+
+export const getLocationSet = (setId: string): Promise<LocationSetDetail> =>
+  request('GET', `/location-sets/${id(setId)}`)
+
+export const createLocationSet = (name: string): Promise<LocationSetDetail> =>
+  request('POST', '/location-sets', { name })
+
+export const renameLocationSet = (setId: string, name: string): Promise<LocationSetDetail> =>
+  request('PUT', `/location-sets/${id(setId)}`, { name })
+
+export const deleteLocationSet = (setId: string): Promise<void> =>
+  request('DELETE', `/location-sets/${id(setId)}`)
+
+export const addLocation = (setId: string, input: LocationInput): Promise<Location> =>
+  request('POST', `/location-sets/${id(setId)}/locations`, input)
+
+export const updateLocation = (
+  setId: string,
+  locationId: string,
+  input: LocationInput,
+): Promise<Location> =>
+  request('PUT', `/location-sets/${id(setId)}/locations/${id(locationId)}`, input)
+
+export const deleteLocation = (setId: string, locationId: string): Promise<void> =>
+  request('DELETE', `/location-sets/${id(setId)}/locations/${id(locationId)}`)
+
 // Search profiles
 export const listSearchProfiles =(): Promise<SearchProfile[]> =>
   requestList(`/search-profiles?${PAGE}`)
@@ -479,6 +605,18 @@ export const selectCompanyList = (profileId: string, listId: string): Promise<vo
 
 export const unselectCompanyList = (profileId: string, listId: string): Promise<void> =>
   request('DELETE', `/search-profiles/${id(profileId)}/company-lists/${id(listId)}`)
+
+export const selectRoleList = (profileId: string, listId: string): Promise<void> =>
+  request('PUT', `/search-profiles/${id(profileId)}/role-lists/${id(listId)}`)
+
+export const unselectRoleList = (profileId: string, listId: string): Promise<void> =>
+  request('DELETE', `/search-profiles/${id(profileId)}/role-lists/${id(listId)}`)
+
+export const selectLocationSet = (profileId: string, setId: string): Promise<void> =>
+  request('PUT', `/search-profiles/${id(profileId)}/location-sets/${id(setId)}`)
+
+export const unselectLocationSet = (profileId: string, setId: string): Promise<void> =>
+  request('DELETE', `/search-profiles/${id(profileId)}/location-sets/${id(setId)}`)
 
 // ---------------------------------------------------------------------------
 // Jobs and applications (docs/api.md, "Jobs" and "Applications"). Manual entry only.

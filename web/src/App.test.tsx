@@ -50,6 +50,12 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: 'Company lists' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Candidates' })).not.toBeInTheDocument()
 
+    await user.click(screen.getByRole('tab', { name: 'Role lists' }))
+    expect(await screen.findByRole('heading', { name: 'Role lists' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('tab', { name: 'Location sets' }))
+    expect(await screen.findByRole('heading', { name: 'Location sets' })).toBeInTheDocument()
+
     await user.click(screen.getByRole('tab', { name: 'Search profiles' }))
     expect(await screen.findByRole('heading', { name: 'Search profiles' })).toBeInTheDocument()
 
