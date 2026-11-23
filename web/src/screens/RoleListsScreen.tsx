@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useId, useState, type FormEvent } from 'react'
 import {
   addRoleTitle,
   createRoleList,
@@ -12,6 +12,7 @@ import {
   type RoleTitle,
   type RoleTitleInput,
 } from '../api'
+import { errorText, FieldError } from '../components/FieldError'
 import { NameForm } from '../components/NameForm'
 import { ProblemAlert } from '../components/ProblemAlert'
 import { useAction, useLoad } from '../hooks'
@@ -59,8 +60,11 @@ function TitleForm({
     }
   }
 
-  const serverTitleErrors = fieldMessages(error, 'title')
-  const serverAliasErrors = fieldMessages(error, 'aliases')
+  const ids = useId()
+  const titleErrorId = `${ids}-title-error`
+  const aliasErrorId = `${ids}-aliases-error`
+  const titleMessage = errorText(titleError, fieldMessages(error, 'title'))
+  const aliasMessage = errorText(aliasError, fieldMessages(error, 'aliases'))
 
   return (
     <form aria-label={formTitle} onSubmit={(e) => void submit(e)} noValidate className="stack">
@@ -70,22 +74,24 @@ function TitleForm({
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          aria-invalid={titleError !== null || serverTitleErrors.length > 0}
+          aria-invalid={titleMessage !== null}
+          aria-describedby={titleMessage !== null ? titleErrorId : undefined}
           disabled={busy}
         />
       </label>
-      {titleError && <p className="field-error">{titleError}</p>}
+      <FieldError id={titleErrorId} message={titleMessage} />
       <label>
         Equivalent titles (aliases), one per line
         <textarea
           rows={3}
           value={aliasText}
           onChange={(e) => setAliasText(e.target.value)}
-          aria-invalid={aliasError !== null || serverAliasErrors.length > 0}
+          aria-invalid={aliasMessage !== null}
+          aria-describedby={aliasMessage !== null ? aliasErrorId : undefined}
           disabled={busy}
         />
       </label>
-      {aliasError && <p className="field-error">{aliasError}</p>}
+      <FieldError id={aliasErrorId} message={aliasMessage} />
       <p className="hint">
         Aliases are other names for the same role. They are not separate employers, and a title or alias can appear only
         once in a list.

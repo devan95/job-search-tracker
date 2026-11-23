@@ -90,7 +90,7 @@ describe('LocationSetsScreen', () => {
     await user.click(within(form).getByRole('button', { name: 'Create location set' }))
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent('Name already in use')
-    expect(alert).toHaveTextContent('another location set')
+    expect(alert).toHaveTextContent('Another location set')
   })
 
   it('spells out every scope, so Remote India and Remote worldwide are never confused', async () => {
@@ -248,11 +248,15 @@ describe('LocationSetsScreen', () => {
     const form = within(region).getByRole('form', { name: 'Add location' })
     await user.click(within(form).getByRole('button', { name: 'Add location' }))
     expect(within(form).getByText('A label is required.')).toBeInTheDocument()
+    expect(within(form).getByLabelText('Label')).toHaveAccessibleDescription('A label is required.')
 
     await user.type(within(form).getByLabelText('Label'), 'Pune')
     await user.type(within(form).getByLabelText('Country code (optional)'), '1')
     await user.click(within(form).getByRole('button', { name: 'Add location' }))
     expect(within(form).getByText('A country code is two letters, such as IN.')).toBeInTheDocument()
+    expect(within(form).getByLabelText('Country code (optional)')).toHaveAccessibleDescription(
+      'A country code is two letters, such as IN.',
+    )
     expect(calls.some((c) => c.method === 'POST')).toBe(false)
   })
 
@@ -292,6 +296,7 @@ describe('LocationSetsScreen', () => {
     const alert = await within(region).findByRole('alert')
     expect(alert).toHaveTextContent('Scope: A scope is required.')
     expect(within(form).getByLabelText('Covers')).toHaveAttribute('aria-invalid', 'true')
+    expect(within(form).getByLabelText('Covers')).toHaveAccessibleDescription('A scope is required.')
   })
 
   it('edits a location, including its scope and country', async () => {

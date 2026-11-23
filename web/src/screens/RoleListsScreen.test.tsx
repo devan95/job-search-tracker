@@ -86,6 +86,9 @@ describe('RoleListsScreen', () => {
     const form = await screen.findByRole('form', { name: 'New role list' })
     await user.click(within(form).getByRole('button', { name: 'Create role list' }))
     expect(within(form).getByText('A name is required.')).toBeInTheDocument()
+    const nameField = within(form).getByLabelText('Role list name')
+    expect(nameField).toHaveAttribute('aria-invalid', 'true')
+    expect(nameField).toHaveAccessibleDescription('A name is required.')
     expect(calls.some((c) => c.method === 'POST')).toBe(false)
   })
 
@@ -100,7 +103,7 @@ describe('RoleListsScreen', () => {
 
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent('Name already in use')
-    expect(alert).toHaveTextContent('another role list')
+    expect(alert).toHaveTextContent('Another role list')
   })
 
   it('shows titles with their aliases as equivalent titles, not as separate entries', async () => {
@@ -185,12 +188,36 @@ describe('RoleListsScreen', () => {
     const form = within(region).getByRole('form', { name: 'Add title' })
     await user.click(within(form).getByRole('button', { name: 'Add title' }))
     expect(within(form).getByText('A title is required.')).toBeInTheDocument()
+    expect(within(form).getByLabelText('Primary title')).toHaveAccessibleDescription('A title is required.')
 
     await user.type(within(form).getByLabelText('Primary title'), 'Analyst')
     await user.type(within(form).getByLabelText(/Equivalent titles/), 'analyst ')
     await user.click(within(form).getByRole('button', { name: 'Add title' }))
     expect(within(form).getByText('An alias cannot be the same as its own title.')).toBeInTheDocument()
+    expect(within(form).getByLabelText(/Equivalent titles/)).toHaveAccessibleDescription(
+      'An alias cannot be the same as its own title.',
+    )
     expect(calls.some((c) => c.method === 'POST')).toBe(false)
+  })
+
+  it('accepts 51 identical alias lines as one alias, because the server keeps a repeat once', async () => {
+    const calls = mockApi({
+      ...listRoutes(),
+      'GET /api/role-lists/r1': { status: 200, body: detail },
+      'POST /api/role-lists/r1/titles': { status: 201, body: detail.titles[0] },
+    })
+    const user = userEvent.setup()
+    render(<RoleListsScreen />)
+    const region = await openList(user)
+
+    const form = within(region).getByRole('form', { name: 'Add title' })
+    await user.type(within(form).getByLabelText('Primary title'), 'Analyst')
+    await user.click(within(form).getByLabelText(/Equivalent titles/))
+    await user.paste(Array.from({ length: 51 }, () => 'SDE').join('\n'))
+    await user.click(within(form).getByRole('button', { name: 'Add title' }))
+
+    await vi.waitFor(() => expect(calls.some((c) => c.method === 'POST')).toBe(true))
+    expect(within(form).queryByText(/at most 50 aliases/)).not.toBeInTheDocument()
   })
 
   it('refuses more than 50 aliases before calling the API', async () => {
@@ -248,7 +275,9 @@ describe('RoleListsScreen', () => {
     const alert = await within(region).findByRole('alert')
     expect(alert).toHaveTextContent('Check the form')
     expect(alert).toHaveTextContent('Title: A title is too long.')
-    expect(within(form).getByLabelText('Primary title')).toHaveAttribute('aria-invalid', 'true')
+    const titleField = within(form).getByLabelText('Primary title')
+    expect(titleField).toHaveAttribute('aria-invalid', 'true')
+    expect(titleField).toHaveAccessibleDescription('A title is too long.')
   })
 
   it('edits a title and replaces its whole alias set', async () => {

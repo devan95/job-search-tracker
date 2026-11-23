@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useId, useState, type FormEvent } from 'react'
 import {
   addLocation,
   createLocationSet,
@@ -13,6 +13,7 @@ import {
   type LocationInput,
   type LocationScope,
 } from '../api'
+import { errorText, FieldError } from '../components/FieldError'
 import { NameForm } from '../components/NameForm'
 import { ProblemAlert } from '../components/ProblemAlert'
 import { useAction, useLoad } from '../hooks'
@@ -67,9 +68,13 @@ function LocationForm({
     }
   }
 
-  const serverLabelErrors = fieldMessages(error, 'label')
-  const serverScopeErrors = fieldMessages(error, 'scope')
-  const serverCodeErrors = fieldMessages(error, 'countryCode')
+  const ids = useId()
+  const labelErrorId = `${ids}-label-error`
+  const scopeErrorId = `${ids}-scope-error`
+  const codeErrorId = `${ids}-code-error`
+  const labelMessage = errorText(labelError, fieldMessages(error, 'label'))
+  const scopeMessage = errorText(null, fieldMessages(error, 'scope'))
+  const codeMessage = errorText(codeError, fieldMessages(error, 'countryCode'))
 
   return (
     <form aria-label={title} onSubmit={(e) => void submit(e)} noValidate className="stack">
@@ -79,11 +84,12 @@ function LocationForm({
         <input
           value={label}
           onChange={(e) => setLabel(e.target.value)}
-          aria-invalid={labelError !== null || serverLabelErrors.length > 0}
+          aria-invalid={labelMessage !== null}
+          aria-describedby={labelMessage !== null ? labelErrorId : undefined}
           disabled={busy}
         />
       </label>
-      {labelError && <p className="field-error">{labelError}</p>}
+      <FieldError id={labelErrorId} message={labelMessage} />
       <label>
         Covers
         <select
@@ -97,7 +103,8 @@ function LocationForm({
               setCodeError(null)
             }
           }}
-          aria-invalid={serverScopeErrors.length > 0}
+          aria-invalid={scopeMessage !== null}
+          aria-describedby={scopeMessage !== null ? scopeErrorId : undefined}
           disabled={busy}
         >
           {LOCATION_SCOPES.map((s) => (
@@ -107,6 +114,7 @@ function LocationForm({
           ))}
         </select>
       </label>
+      <FieldError id={scopeErrorId} message={scopeMessage} />
       {scope === 'remoteWorldwide' ? (
         <p className="hint">Remote worldwide has no country. It is not the same as remote within one country.</p>
       ) : (
@@ -117,11 +125,12 @@ function LocationForm({
               value={countryCode}
               maxLength={2}
               onChange={(e) => setCountryCode(e.target.value)}
-              aria-invalid={codeError !== null || serverCodeErrors.length > 0}
+              aria-invalid={codeMessage !== null}
+              aria-describedby={codeMessage !== null ? codeErrorId : undefined}
               disabled={busy}
             />
           </label>
-          {codeError && <p className="field-error">{codeError}</p>}
+          <FieldError id={codeErrorId} message={codeMessage} />
         </>
       )}
       <p className="hint">

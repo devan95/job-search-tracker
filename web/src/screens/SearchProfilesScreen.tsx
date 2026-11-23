@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useId, useState, type FormEvent, type ReactNode } from 'react'
 import {
   createSearchProfile,
   deleteSearchProfile,
@@ -22,6 +22,7 @@ import {
   type SearchProfile,
   type WorkMode,
 } from '../api'
+import { errorText, FieldError } from '../components/FieldError'
 import { ProblemAlert } from '../components/ProblemAlert'
 import { WorkModeField } from '../components/WorkModeFields'
 import { useAction, useLoad } from '../hooks'
@@ -95,6 +96,13 @@ function ProfileForm({
   const [broad, setBroad] = useState(initial.broadSearchEnabled)
   const [nameError, setNameError] = useState<string | null>(null)
   const [candidateError, setCandidateError] = useState<string | null>(null)
+  const ids = useId()
+  const companyErrorId = `${ids}-company-lists-error`
+  const roleErrorId = `${ids}-role-lists-error`
+  const locationErrorId = `${ids}-location-sets-error`
+  const companyMessage = errorText(null, fieldMessages(error, 'companyListIds'))
+  const roleMessage = errorText(null, fieldMessages(error, 'roleListIds'))
+  const locationMessage = errorText(null, fieldMessages(error, 'locationSetIds'))
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -165,7 +173,11 @@ function ProfileForm({
       </label>
       {nameError && <p className="field-error">{nameError}</p>}
 
-      <fieldset disabled={busy} aria-invalid={fieldMessages(error, 'companyListIds').length > 0 || undefined}>
+      <fieldset
+        disabled={busy}
+        aria-invalid={companyMessage !== null || undefined}
+        aria-describedby={companyMessage !== null ? companyErrorId : undefined}
+      >
         <legend>Company lists</legend>
         {lists.length === 0 && (
           <p className="hint">No company lists yet. Create one in Company lists, or save the profile without any.</p>
@@ -184,9 +196,14 @@ function ProfileForm({
             {list.name}
           </label>
         ))}
+        <FieldError id={companyErrorId} message={companyMessage} />
       </fieldset>
 
-      <fieldset disabled={busy} aria-invalid={fieldMessages(error, 'roleListIds').length > 0 || undefined}>
+      <fieldset
+        disabled={busy}
+        aria-invalid={roleMessage !== null || undefined}
+        aria-describedby={roleMessage !== null ? roleErrorId : undefined}
+      >
         <legend>Role lists</legend>
         {roleLists.length === 0 && (
           <p className="hint">No role lists yet. Create one in Role lists, or save the profile without any.</p>
@@ -205,9 +222,14 @@ function ProfileForm({
             {list.name}
           </label>
         ))}
+        <FieldError id={roleErrorId} message={roleMessage} />
       </fieldset>
 
-      <fieldset disabled={busy} aria-invalid={fieldMessages(error, 'locationSetIds').length > 0 || undefined}>
+      <fieldset
+        disabled={busy}
+        aria-invalid={locationMessage !== null || undefined}
+        aria-describedby={locationMessage !== null ? locationErrorId : undefined}
+      >
         <legend>Location sets</legend>
         {locationSets.length === 0 && (
           <p className="hint">No location sets yet. Create one in Location sets, or save the profile without any.</p>
@@ -226,6 +248,7 @@ function ProfileForm({
             {set.name}
           </label>
         ))}
+        <FieldError id={locationErrorId} message={locationMessage} />
       </fieldset>
 
       <WorkModeField

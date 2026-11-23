@@ -1,7 +1,8 @@
-import { useState, type FormEvent } from 'react'
+import { useId, useState, type FormEvent } from 'react'
 import type { ApiError } from '../api'
 import { fieldMessages } from '../problems'
 import { validateName } from '../validation'
+import { errorText, FieldError } from './FieldError'
 
 interface Props {
   title: string
@@ -28,6 +29,8 @@ export function NameForm({
 }: Props) {
   const [name, setName] = useState(initialName)
   const [nameError, setNameError] = useState<string | null>(null)
+  const errorId = useId()
+  const message = errorText(nameError, fieldMessages(error, 'name'))
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -46,11 +49,12 @@ export function NameForm({
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          aria-invalid={nameError !== null || fieldMessages(error, 'name').length > 0}
+          aria-invalid={message !== null}
+          aria-describedby={message !== null ? errorId : undefined}
           disabled={busy}
         />
       </label>
-      {nameError && <p className="field-error">{nameError}</p>}
+      <FieldError id={errorId} message={message} />
       <button type="submit" disabled={busy}>
         {submitLabel}
       </button>

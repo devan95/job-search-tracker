@@ -520,6 +520,34 @@ describe('SearchProfilesScreen', () => {
     expect(screen.getByRole('form', { name: 'Edit search profile' })).toBeInTheDocument()
   })
 
+  it('shows the API messages for role-list and location-set selections and links them to their fieldsets', async () => {
+    mockApi({
+      ...baseRoutes(),
+      'POST /api/search-profiles': problem(400, 'validation', {
+        errors: {
+          roleListIds: ['One or more role lists do not exist.'],
+          locationSetIds: ['One or more location sets do not exist.'],
+        },
+      }),
+    })
+    const user = userEvent.setup()
+    render(<SearchProfilesScreen />)
+
+    const form = await screen.findByRole('form', { name: 'New search profile' })
+    await user.selectOptions(within(form).getByLabelText('Candidate'), 'c1')
+    await user.type(within(form).getByLabelText('Profile name'), 'Stale')
+    await user.click(within(form).getByLabelText('Backend titles'))
+    await user.click(within(form).getByLabelText('Gujarat cities'))
+    await user.click(within(form).getByRole('button', { name: 'Create profile' }))
+
+    const roles = await within(form).findByRole('group', { name: 'Role lists' })
+    expect(roles).toHaveAttribute('aria-invalid', 'true')
+    expect(roles).toHaveAccessibleDescription('One or more role lists do not exist.')
+    const places = within(form).getByRole('group', { name: 'Location sets' })
+    expect(places).toHaveAccessibleDescription('One or more location sets do not exist.')
+    expect(within(form).getByRole('group', { name: 'Company lists' })).not.toHaveAttribute('aria-invalid')
+  })
+
   it('blocks the screen with an error when role lists cannot be loaded', async () => {
     mockApi({
       ...baseRoutes(),
