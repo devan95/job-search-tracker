@@ -323,6 +323,14 @@ change. Concurrent changes to one application are version-checked (`xmin`): the 
 Related conflict codes: 409 `candidate_has_applications` (`applicationCount`) on `DELETE /candidates/{id}`, and the existing 409
 `job_in_use` on `DELETE /jobs/{id}` now applies when an application exists.
 
+### Source listings, scan runs and outcomes (Phase 2 S2.1 + S2.2)
+
+No endpoint is added: these tables are written by the source common path (`SourceScanService`, see
+[development.md](development.md#source-adapter-contract-phase-2-s22)) and read by later stories (S2.4 board test, S2.7 run-now,
+S2.10 source status). The only visible change is that `DELETE /jobs/{id}` now also returns 409 `job_in_use` when a job has a
+source listing (the foreign key is RESTRICT, the same mapping as for applications). Outcome values on the wire, when later
+stories expose them, are `success`, `partial`, `failed`, `unsupported` and `notChecked`.
+
 ## Examples
 
 ```

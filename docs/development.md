@@ -67,7 +67,7 @@ docker compose run --rm migrate
 docker compose exec db psql -U jobsearch -d jobsearch -c "\dt"
 ```
 
-- Fresh database: creates all sixteen tables and `__EFMigrationsHistory` (ten of them after `AddApplications`, six more from `AddRoleListsAndLocationSets`).
+- Fresh database: creates all nineteen tables and `__EFMigrationsHistory` (ten of them after `AddApplications`, six more from `AddRoleListsAndLocationSets`, three more from `AddSourceListingsAndScanRuns`).
 - Existing database already at the current migration: nothing to apply; data is untouched.
 - Existing database behind the latest migration: applies only the missing migrations, in order.
 - Running `migrate` again is always safe (idempotent). A failed migration exits non-zero; read the log before retrying.
@@ -94,15 +94,48 @@ docker compose run --rm migrate
 docker compose down -v
 ```
 
-Expected: the first `migrate` applies all four migrations (`InitialDataModel`, `AddJobs`, `AddApplications` and `AddRoleListsAndLocationSets`), `\dt` lists sixteen tables plus `__EFMigrationsHistory` (ten is only the intermediate state after `AddApplications`), and the second
+Expected: the first `migrate` applies all five migrations (`InitialDataModel`, `AddJobs`, `AddApplications`, `AddRoleListsAndLocationSets` and `AddSourceListingsAndScanRuns`), `\dt` lists nineteen tables plus `__EFMigrationsHistory` (ten is only the intermediate state after `AddApplications`), and the second
 `migrate` applies nothing. `down -v` is safe here only because `COMPOSE_PROJECT_NAME` is `jst_verify` (check the `echo` line first).
 Close the CMD window afterwards so the variables do not leak into normal use.
 
 ### Order 4: role lists and location sets
 
 The migration `AddRoleListsAndLocationSets` comes after `AddApplications`. On a fresh database the first `migrate` applies it
-as well, and `\dt` then lists sixteen tables plus `__EFMigrationsHistory`. An existing database at `AddApplications` only
+as well, and `\dt` then lists nineteen tables plus `__EFMigrationsHistory` (sixteen before `AddSourceListingsAndScanRuns`). An existing database at `AddApplications` only
 gets this one migration (six new tables, no data change). Everything else in the verification above stays the same.
+
+### Phase 2 S2.1: source listings and scan runs
+
+The migration `AddSourceListingsAndScanRuns` comes after `AddRoleListsAndLocationSets`. It adds three tables (`source_listings`,
+`scan_runs`, `source_outcomes`) and changes no existing table or row. Revert only this migration on a throw-away database with
+`dotnet ef database update 20261118120000_AddRoleListsAndLocationSets`.
+
+### Source adapter contract (Phase 2 S2.2)
+
+Code: `src/JobSearchTracker.Api/Sources/`. Every source, real or fake, implements `ISourceAdapter`:
+
+- `SourceType` (for example `greenhouse`, at most 30 characters) and `Capabilities`: `Method` (`api`, `careerPage`, `linkOnly`,
+  `emailDerived`), `Pagination` (`None`, `Offset`, `Cursor`) and `RequiresCredentials` (credentials are never stored in Git or logs).
+- `FetchAsync(SourceRequest, CancellationToken)` returns a `SourceFetchResult`: listings plus an outcome (`Success`, `Partial`,
+  `Failed`, `Unsupported`, `NotChecked`), an error text, a recommended next step and `Retryable`. Build it with the factory
+  methods. An empty list is a real answer only inside `Success`. Prefer returning an outcome to throwing; an exception is
+  recorded as `Failed` with the exception type name only.
+
+`SourceScanService.RunAsync` is the one common path. It runs each adapter with a bounded timeout (default 30 s, capped at 2 min)
+and a capped retry (default 3 attempts, capped at 5, exponential backoff from 1 s capped at 30 s; only a `Failed` result that is
+marked `Retryable`, including a timeout, is retried), then writes one `scan_runs` row and one `source_outcomes` row per source. The
+rules it enforces again whatever the adapter says: a `linkOnly` or `emailDerived` source reporting `Success` or `Partial` is
+stored as `NotChecked`; only `Success` and `Partial` keep listings; error and next-step text is made one-line, bounded to 500
+characters and stripped of `token=`, `key=`, `secret=`, `password=`, `authorization` and `bearer` values. The overall outcome of
+a run: all equal gives that outcome; otherwise `Partial` if anything was read, else `Failed`, `Unsupported`, `Not checked` in that order; no sources is `Not checked`.
+
+The service never creates, updates or closes a job or a listing. It returns the listings of each source so that S2.8 can import
+them, and S2.8 must act only on `Success` results (a `Failed` or `Partial` scan never closes or changes a job). Adapters are
+registered as `ISourceAdapter` services; `SourceAdapterRegistry` finds them by source type and rejects duplicates. No real
+adapter is registered yet (S2.4 to S2.6). The deterministic `FakeSourceAdapter` for tests is in the test project.
+
+The EF model check could not be run when this migration was written (no .NET SDK in the authoring workspace); the CI step
+"EF model matches migrations" is the verification.
 
 ## Tests
 

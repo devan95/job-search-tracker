@@ -6,7 +6,7 @@ public class SchemaTests : DatabaseTestBase
     private static readonly string[] ExpectedMigrations =
     [
         "20261114120000_InitialDataModel", "20261117060000_AddJobs", "20261118040000_AddApplications",
-        "20261118120000_AddRoleListsAndLocationSets",
+        "20261118120000_AddRoleListsAndLocationSets", "20261123150000_AddSourceListingsAndScanRuns",
     ];
 
     private static readonly string[] ExpectedUniqueIndexes =
@@ -15,18 +15,19 @@ public class SchemaTests : DatabaseTestBase
         "IX_jobs_EmployerId_NormalizedRequisitionId", "IX_location_set_locations_unique_no_country",
         "IX_location_set_locations_unique_with_country", "IX_location_sets_NormalizedName",
         "IX_role_list_titles_RoleListId_NormalizedTitle", "IX_role_lists_NormalizedName",
-        "IX_search_profiles_CandidateId_NormalizedName",
+        "IX_search_profiles_CandidateId_NormalizedName", "IX_source_listings_SourceType_ExternalId",
     ];
 
     private static readonly string[] ExpectedTables =
     [
         "application_audit", "applications", "candidates", "company_list_employers", "company_lists", "employers",
         "job_status_history", "jobs", "location_set_locations", "location_sets", "role_list_titles", "role_lists",
-        "search_profile_company_lists", "search_profile_location_sets", "search_profile_role_lists", "search_profiles",
+        "scan_runs", "search_profile_company_lists", "search_profile_location_sets", "search_profile_role_lists", "search_profiles",
+        "source_listings", "source_outcomes",
     ];
 
     [Fact]
-    public async Task Exactly_sixteen_application_tables_exist_excluding_the_migration_history()
+    public async Task Exactly_nineteen_application_tables_exist_excluding_the_migration_history()
     {
         var tables = await Db.QueryAsync(
             "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' " +
@@ -38,7 +39,7 @@ public class SchemaTests : DatabaseTestBase
     }
 
     [Fact]
-    public async Task Migration_history_table_records_exactly_the_four_migrations()
+    public async Task Migration_history_table_records_exactly_the_five_migrations()
     {
         var applied = await Db.QueryAsync("SELECT \"MigrationId\" FROM \"__EFMigrationsHistory\"", r => r.GetString(0));
         Assert.Equal(ExpectedMigrations, applied.OrderBy(x => x, StringComparer.Ordinal));
@@ -147,6 +148,34 @@ public class SchemaTests : DatabaseTestBase
             "search_profiles.NormalizedName character varying NO 200",
             "search_profiles.ProfileVersion integer NO -",
             "search_profiles.WorkModes integer YES -",
+            "scan_runs.FinishedAtUtc timestamp with time zone YES -",
+            "scan_runs.Id uuid NO -",
+            "scan_runs.Outcome character varying YES 20",
+            "scan_runs.SearchProfileId uuid YES -",
+            "scan_runs.StartedAtUtc timestamp with time zone NO -",
+            "scan_runs.Trigger character varying NO 20",
+            "source_listings.ContentHash character varying NO 64",
+            "source_listings.ExternalId character varying NO 200",
+            "source_listings.FirstSeenAtUtc timestamp with time zone NO -",
+            "source_listings.Id uuid NO -",
+            "source_listings.JobId uuid NO -",
+            "source_listings.LastSeenAtUtc timestamp with time zone NO -",
+            "source_listings.SourceType character varying NO 30",
+            "source_listings.SourceUpdatedAtUtc timestamp with time zone YES -",
+            "source_listings.SourceUrl character varying YES 2000",
+            "source_outcomes.Attempts integer NO -",
+            "source_outcomes.EmployerId uuid YES -",
+            "source_outcomes.ErrorText character varying YES 500",
+            "source_outcomes.FinishedAtUtc timestamp with time zone NO -",
+            "source_outcomes.Id uuid NO -",
+            "source_outcomes.ListingsFound integer NO -",
+            "source_outcomes.ListingsRejected integer NO -",
+            "source_outcomes.Method character varying NO 20",
+            "source_outcomes.Outcome character varying NO 20",
+            "source_outcomes.RecommendedNextStep character varying YES 500",
+            "source_outcomes.ScanRunId uuid NO -",
+            "source_outcomes.SourceType character varying NO 30",
+            "source_outcomes.StartedAtUtc timestamp with time zone NO -",
         ];
 
         Assert.Equal(expected.OrderBy(x => x, StringComparer.Ordinal), columns.OrderBy(x => x, StringComparer.Ordinal));
@@ -171,7 +200,7 @@ public class SchemaTests : DatabaseTestBase
     {
         var rules = await Db.QueryAsync(
             "SELECT conrelid::regclass::text || ' -> ' || confrelid::regclass::text || ' ' || " +
-            "CASE confdeltype WHEN 'c' THEN 'CASCADE' WHEN 'r' THEN 'RESTRICT' WHEN 'a' THEN 'NO ACTION' ELSE confdeltype::text END " +
+            "CASE confdeltype WHEN 'c' THEN 'CASCADE' WHEN 'r' THEN 'RESTRICT' WHEN 'n' THEN 'SET NULL' WHEN 'a' THEN 'NO ACTION' ELSE confdeltype::text END " +
             "FROM pg_constraint WHERE contype = 'f' AND connamespace = 'public'::regnamespace ORDER BY 1",
             r => r.GetString(0));
 
@@ -186,6 +215,7 @@ public class SchemaTests : DatabaseTestBase
                 "location_set_locations -> location_sets CASCADE",
                 "role_list_titles -> role_list_titles CASCADE",
                 "role_list_titles -> role_lists CASCADE",
+                "scan_runs -> search_profiles SET NULL",
                 "search_profile_company_lists -> company_lists RESTRICT",
                 "search_profile_company_lists -> search_profiles CASCADE",
                 "search_profile_location_sets -> location_sets RESTRICT",
@@ -193,6 +223,9 @@ public class SchemaTests : DatabaseTestBase
                 "search_profile_role_lists -> role_lists RESTRICT",
                 "search_profile_role_lists -> search_profiles CASCADE",
                 "search_profiles -> candidates RESTRICT",
+                "source_listings -> jobs RESTRICT",
+                "source_outcomes -> employers SET NULL",
+                "source_outcomes -> scan_runs CASCADE",
             },
             rules.OrderBy(x => x, StringComparer.Ordinal));
     }
@@ -234,19 +267,37 @@ public class SchemaTests : DatabaseTestBase
                 "CK_role_list_titles_not_own_primary",
                 "CK_role_list_titles_title_not_blank",
                 "CK_role_lists_name_not_blank",
+                "CK_scan_runs_finished_not_before_started",
+                "CK_scan_runs_finished_with_outcome",
+                "CK_scan_runs_outcome_values",
+                "CK_scan_runs_trigger_values",
                 "CK_search_profiles_name_not_blank",
                 "CK_search_profiles_profile_version_min",
                 "CK_search_profiles_work_modes_range",
+                "CK_source_listings_content_hash_format",
+                "CK_source_listings_external_id_not_blank",
+                "CK_source_listings_seen_order",
+                "CK_source_listings_source_type_not_blank",
+                "CK_source_listings_source_url_http",
+                "CK_source_outcomes_counts_valid",
+                "CK_source_outcomes_finished_not_before_started",
+                "CK_source_outcomes_listings_only_when_read",
+                "CK_source_outcomes_method_values",
+                "CK_source_outcomes_outcome_values",
+                "CK_source_outcomes_restricted_method_not_searched",
+                "CK_source_outcomes_source_type_not_blank",
             }.OrderBy(x => x, StringComparer.Ordinal),
             checks.OrderBy(x => x, StringComparer.Ordinal));
     }
 
     [Fact]
-    public async Task No_table_stores_source_or_employer_resolution_data_that_is_deferred()
+    public async Task Employers_and_profiles_still_store_no_website_career_ats_or_per_source_columns()
     {
-        // U3/U6 deferrals: no website, career URL, ATS or per-source columns in Phase 1.
+        // U3/U6 deferrals that Phase 2 has not delivered yet: S2.3 adds the employer fields and S2.9 the per-profile source
+        // toggles. The Phase 2 source tables (source_listings, scan_runs, source_outcomes) are the S2.1 additions.
         var deferred = await Db.QueryAsync(
             "SELECT table_name || '.' || column_name FROM information_schema.columns WHERE table_schema = 'public' " +
+            "AND table_name IN ('employers', 'company_lists', 'company_list_employers', 'search_profiles', 'search_profile_company_lists') " +
             "AND (column_name ILIKE '%website%' OR column_name ILIKE '%career%' OR column_name ILIKE '%ats%' OR column_name ILIKE '%source%')",
             r => r.GetString(0));
 

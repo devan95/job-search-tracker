@@ -16,14 +16,35 @@ public class MigrationTests
         Assert.Empty(await TablesAsync(db));
 
         await db.MigrateToAsync(null);
-        Assert.Equal(16, (await TablesAsync(db)).Count);
+        Assert.Equal(19, (await TablesAsync(db)).Count);
 
         await db.MigrateToAsync("0");
         Assert.Empty(await TablesAsync(db));
         Assert.Empty(await db.QueryAsync("SELECT \"MigrationId\" FROM \"__EFMigrationsHistory\"", r => r.GetString(0)));
 
         await db.MigrateToAsync(null);
-        Assert.Equal(16, (await TablesAsync(db)).Count);
+        Assert.Equal(19, (await TablesAsync(db)).Count);
+    }
+
+    [Fact]
+    public async Task The_source_migration_reverts_alone_and_leaves_the_sixteen_earlier_tables_and_their_data()
+    {
+        await using var db = await TestDatabase.CreateEmptyAsync();
+        await db.MigrateToAsync(null);
+        await db.ExecuteAsync("INSERT INTO employers (\"Id\", \"Name\", \"NormalizedName\") VALUES (gen_random_uuid(), 'Acme', 'acme')");
+
+        await db.MigrateToAsync("20261118120000_AddRoleListsAndLocationSets");
+
+        var tables = await TablesAsync(db);
+        Assert.Equal(16, tables.Count);
+        Assert.DoesNotContain("source_listings", tables);
+        Assert.DoesNotContain("scan_runs", tables);
+        Assert.DoesNotContain("source_outcomes", tables);
+        Assert.Equal(1, (await db.QueryAsync("SELECT count(*)::int FROM employers", r => r.GetInt32(0))).Single());
+
+        await db.MigrateToAsync(null);
+        Assert.Equal(19, (await TablesAsync(db)).Count);
+        Assert.Equal(1, (await db.QueryAsync("SELECT count(*)::int FROM employers", r => r.GetInt32(0))).Single());
     }
 
     [Fact]
@@ -44,7 +65,7 @@ public class MigrationTests
         Assert.DoesNotContain("search_profile_location_sets", tables);
 
         await db.MigrateToAsync(null);
-        Assert.Equal(16, (await TablesAsync(db)).Count);
+        Assert.Equal(19, (await TablesAsync(db)).Count);
     }
 
     [Fact]
@@ -62,7 +83,7 @@ public class MigrationTests
         Assert.Empty(await db.QueryAsync("SELECT proname FROM pg_proc WHERE proname = 'application_audit_append_only'", r => r.GetString(0)));
 
         await db.MigrateToAsync(null);
-        Assert.Equal(16, (await TablesAsync(db)).Count);
+        Assert.Equal(19, (await TablesAsync(db)).Count);
     }
 
     [Fact]

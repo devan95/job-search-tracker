@@ -194,9 +194,55 @@ Assumptions to confirm (not settled by the answers above):
 3. The same label may repeat in one set only with a different scope or country.
 4. A list or set that a profile selects cannot be deleted (RESTRICT), as for company lists.
 
+## Source listings, scan runs and outcomes (Phase 2 S2.1 + S2.2; decisions D1 to D3, approved 2026-11-23)
+
+Migration `20261123150000_AddSourceListingsAndScanRuns` adds three tables, so the model has nineteen tables in total. It
+changes no existing table.
+
+| Table | Purpose | Key columns |
+| --- | --- | --- |
+| `source_listings` | One listing of a canonical job on one source. A job can have several. | `Id`, `JobId`, `SourceType`, `ExternalId`, `SourceUrl`, `ContentHash`, `SourceUpdatedAtUtc`, `FirstSeenAtUtc`, `LastSeenAtUtc` |
+| `scan_runs` | One scan: profile, trigger, start, finish and overall outcome. | `Id`, `SearchProfileId` (nullable), `Trigger`, `StartedAtUtc`, `FinishedAtUtc`, `Outcome` |
+| `source_outcomes` | What happened to one source in one run. | `Id`, `ScanRunId`, `SourceType`, `Method`, `EmployerId` (nullable), `Outcome`, `ErrorText`, `RecommendedNextStep`, `ListingsFound`, `ListingsRejected`, `Attempts`, `StartedAtUtc`, `FinishedAtUtc` |
+
+| ID | Decision | Where it shows |
+| --- | --- | --- |
+| D1 | A listing keeps the external id and source URL. The job fields of the approved list (title, location text, work mode, department, employment type, posted date, apply URL, requisition id, experience min and max) stay on the canonical `jobs` row; "found on" stays for manual jobs only. The description is sanitized text plus a content hash. The source's own "updated" time is kept on the listing. | `jobs` unchanged; `source_listings.ContentHash`, `SourceUpdatedAtUtc` |
+| D2 | No raw provider payload is stored. A listing keeps its content hash and first and last seen times. | No payload column anywhere |
+| D3 | A job is closed only after N = 3 consecutive successful scans that miss it. The number is consumed by S2.8 (nothing in S2.1 or S2.2 closes a job). | Documented here; no column |
+
+Outcome values (stored camelCase, shown as Success, Partial, Failed, Unsupported, Not checked): `success`, `partial`, `failed`,
+`unsupported`, `notChecked`. A check constraint limits `source_outcomes.Outcome` to these five (`scan_runs.Outcome` too, but it is
+null while the run is still running). `Method` is `api`, `careerPage`, `linkOnly` or `emailDerived`. `Trigger` is `manual`,
+`scheduled` or `boardTest`. `SourceType` is free text (for example `greenhouse`); the source catalog arrives with S2.9, so it is
+not a check.
+
+Constraints that keep the data honest even without the code:
+
+| Constraint | Rule |
+| --- | --- |
+| `IX_source_listings_SourceType_ExternalId` (unique) | One listing per source type and external id, whichever job it belongs to. |
+| `CK_source_listings_content_hash_format` | 64 lower-case hex characters (SHA-256). |
+| `CK_source_listings_source_url_http`, `_seen_order`, `_source_type_not_blank`, `_external_id_not_blank` | http(s) URL only; last seen is not before first seen; no blank identifiers. |
+| `CK_source_outcomes_restricted_method_not_searched` | A `linkOnly` or `emailDerived` outcome can never be `success` or `partial`: such a source never searched live. |
+| `CK_source_outcomes_listings_only_when_read` | Only `success` and `partial` may report listings; everything else has `ListingsFound = 0`. |
+| `CK_source_outcomes_counts_valid` | Counts are not negative and `Attempts` is at least 1. |
+| `CK_scan_runs_finished_with_outcome` | A run is finished exactly when it has an overall outcome. |
+| `CK_scan_runs_finished_not_before_started`, `CK_source_outcomes_finished_not_before_started` | Time order. |
+
+| Parent -> child | Rule | Effect |
+| --- | --- | --- |
+| `jobs` -> `source_listings` | RESTRICT | A job that has a listing cannot be hard-deleted (API: 409 `job_in_use`), so no listing is ever orphaned (OQ-P1.6). |
+| `scan_runs` -> `source_outcomes` | CASCADE | Outcomes belong to their run. |
+| `search_profiles` -> `scan_runs` | SET NULL | Deleting a profile keeps the scan history. |
+| `employers` -> `source_outcomes` | SET NULL | Deleting an employer keeps the outcome history. |
+
+The adapter contract and the common path that writes these tables are described in [development.md](development.md#source-adapter-contract-phase-2-s22).
+Importing listings into canonical jobs, matching and the lifecycle are S2.8; nothing in S2.1 or S2.2 changes a job.
+
 ## Deferred requirements (AC7)
 
-Not in this model: location sets, role lists and aliases, employer website/career URL/ATS, source catalog and per-source enablement, automatic `ProfileVersion` increment. Their owner and phase are on the Notion Task Board and Product Requirements; the API is in [api.md](api.md).
+Not in this model: employer website/career URL/ATS (S2.3), source catalog and per-profile source enablement (S2.9), automatic `ProfileVersion` increment (S3.1). Location sets, role lists and aliases were delivered in Order 4; source listings and scan outcomes in S2.1. Their owner and phase are on the Notion Task Board and Product Requirements; the API is in [api.md](api.md).
 
 ## Assumptions to confirm
 

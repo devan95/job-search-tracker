@@ -1,6 +1,7 @@
 using JobSearchTracker.Api.Data;
 using JobSearchTracker.Api.Health;
 using JobSearchTracker.Api.Management;
+using JobSearchTracker.Api.Sources;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -15,6 +16,12 @@ builder.Services.AddDbContext<AppDbContext>((services, options) =>
     options.UseNpgsql(connectionString);
 });
 builder.Services.AddScoped<IDatabaseProbe, EfDatabaseProbe>();
+
+// Phase 2 source contract (S2.2). No real adapter is registered yet; S2.4 to S2.6 add ISourceAdapter registrations here.
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<SourceAdapterRegistry>();
+builder.Services.AddScoped(services => new SourceScanService(
+    services.GetRequiredService<AppDbContext>(), services.GetRequiredService<TimeProvider>()));
 
 // Errors (including malformed request bodies and unexpected failures) are returned as RFC 7807 problem documents.
 builder.Services.AddProblemDetails();
