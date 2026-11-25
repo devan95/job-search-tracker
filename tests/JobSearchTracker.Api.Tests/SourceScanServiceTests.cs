@@ -482,6 +482,10 @@ public class SourceContractTests
         Assert.DoesNotContain("SYNTHETIC_TOKEN", SafeText.Clean("Authorization: Bearer SYNTHETIC_TOKEN", 100));
         Assert.DoesNotContain("SYNTHETIC_SECRET", SafeText.Clean("{\"token\":\"SYNTHETIC_SECRET\"}", 100));
         Assert.DoesNotContain("SYNTHETIC_SECRET", SafeText.Clean("{'password': 'SYNTHETIC_SECRET'}", 100));
+        var spaced = SafeText.Clean("{\"password\":\"SYNTHETIC SECRET words\"} failed", 100)!;
+        Assert.DoesNotContain("SECRET", spaced);
+        Assert.DoesNotContain("words", spaced);
+        Assert.Contains("failed", spaced);
         var clipped = SafeText.Clean(new string('x', 600), 500)!;
         Assert.Equal(500, clipped.Length);
         Assert.EndsWith("…", clipped);

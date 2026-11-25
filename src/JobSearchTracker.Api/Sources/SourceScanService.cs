@@ -179,7 +179,7 @@ public sealed class SourceScanService(AppDbContext db, TimeProvider clock, Func<
     {
         try
         {
-            await attemptCts.CancelAsync().WaitAsync(CancelCleanupBound);
+            await attemptCts.CancelAsync().WaitAsync(CancelCleanupBound, CancellationToken.None);
         }
         catch (TimeoutException)
         {
