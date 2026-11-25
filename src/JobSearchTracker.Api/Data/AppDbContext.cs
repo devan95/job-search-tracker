@@ -5,7 +5,8 @@ namespace JobSearchTracker.Api.Data;
 /// <summary>
 /// EF Core context for the Phase 1 data model: candidates, employers, company lists, search profiles, the
 /// two join tables, canonical jobs and their status history, applications and their audit trail, role lists with their
-/// titles and aliases, location sets with their locations, and the profile selections of both. See docs/data-model.md for the decisions behind it.
+/// titles and aliases, location sets with their locations, the profile selections of both, and (Phase 2) source listings,
+/// scan runs and per-source outcomes. See docs/data-model.md for the decisions behind it.
 /// </summary>
 public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
@@ -25,6 +26,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<LocationSetLocation> LocationSetLocations => Set<LocationSetLocation>();
     public DbSet<SearchProfileRoleList> SearchProfileRoleLists => Set<SearchProfileRoleList>();
     public DbSet<SearchProfileLocationSet> SearchProfileLocationSets => Set<SearchProfileLocationSet>();
+    public DbSet<SourceListing> SourceListings => Set<SourceListing>();
+    public DbSet<ScanRun> ScanRuns => Set<ScanRun>();
+    public DbSet<SourceOutcome> SourceOutcomes => Set<SourceOutcome>();
 
     private static string InList(IEnumerable<string> values) => string.Join(", ", values.Select(v => $"'{v}'"));
 
@@ -283,6 +287,73 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
                 .HasForeignKey(x => x.SearchProfileId).OnDelete(DeleteBehavior.Cascade).IsRequired();
             b.HasOne(x => x.LocationSet).WithMany(x => x.SearchProfiles)
                 .HasForeignKey(x => x.LocationSetId).OnDelete(DeleteBehavior.Restrict).IsRequired();
+        });
+
+        modelBuilder.Entity<SourceListing>(b =>
+        {
+            b.ToTable("source_listings", t =>
+            {
+                t.HasCheckConstraint("CK_source_listings_source_type_not_blank", "char_length(btrim(\"SourceType\")) > 0");
+                t.HasCheckConstraint("CK_source_listings_external_id_not_blank", "char_length(btrim(\"ExternalId\")) > 0");
+                t.HasCheckConstraint("CK_source_listings_content_hash_format", "\"ContentHash\" ~ '^[0-9a-f]{64}$'");
+                t.HasCheckConstraint("CK_source_listings_source_url_http", "\"SourceUrl\" IS NULL OR \"SourceUrl\" ~* '^https?://'");
+                t.HasCheckConstraint("CK_source_listings_seen_order", "\"LastSeenAtUtc\" >= \"FirstSeenAtUtc\"");
+            });
+            b.HasKey(x => x.Id);
+            b.Property(x => x.SourceType).IsRequired().HasMaxLength(SourceScanLimits.SourceType);
+            b.Property(x => x.ExternalId).IsRequired().HasMaxLength(SourceScanLimits.ExternalId);
+            b.Property(x => x.SourceUrl).HasMaxLength(SourceScanLimits.Url);
+            b.Property(x => x.ContentHash).IsRequired().HasMaxLength(SourceScanLimits.ContentHash);
+            // RESTRICT: a job that has a listing cannot be hard-deleted (OQ-P1.6), so no listing is ever orphaned.
+            b.HasOne<Job>().WithMany().HasForeignKey(x => x.JobId).OnDelete(DeleteBehavior.Restrict).IsRequired();
+            // One listing per source type and external id, whichever job it belongs to.
+            b.HasIndex(x => new { x.SourceType, x.ExternalId }).IsUnique();
+        });
+
+        modelBuilder.Entity<ScanRun>(b =>
+        {
+            b.ToTable("scan_runs", t =>
+            {
+                t.HasCheckConstraint("CK_scan_runs_trigger_values", $"\"Trigger\" IN ({InList(ScanTriggers.All)})");
+                t.HasCheckConstraint("CK_scan_runs_outcome_values", $"\"Outcome\" IS NULL OR \"Outcome\" IN ({InList(ScanOutcomes.All)})");
+                // A run is finished exactly when it has an overall outcome.
+                t.HasCheckConstraint("CK_scan_runs_finished_with_outcome", "(\"FinishedAtUtc\" IS NULL) = (\"Outcome\" IS NULL)");
+                t.HasCheckConstraint("CK_scan_runs_finished_not_before_started", "\"FinishedAtUtc\" IS NULL OR \"FinishedAtUtc\" >= \"StartedAtUtc\"");
+            });
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Trigger).IsRequired().HasMaxLength(20);
+            b.Property(x => x.Outcome).HasMaxLength(20);
+            // SET NULL: deleting a profile keeps the scan history.
+            b.HasOne<SearchProfile>().WithMany().HasForeignKey(x => x.SearchProfileId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<SourceOutcome>(b =>
+        {
+            b.ToTable("source_outcomes", t =>
+            {
+                t.HasCheckConstraint("CK_source_outcomes_source_type_not_blank", "char_length(btrim(\"SourceType\")) > 0");
+                t.HasCheckConstraint("CK_source_outcomes_method_values", $"\"Method\" IN ({InList(SourceMethods.All)})");
+                t.HasCheckConstraint("CK_source_outcomes_outcome_values", $"\"Outcome\" IN ({InList(ScanOutcomes.All)})");
+                // Link-only and email-derived sources never searched live, so they can never be Success or Partial.
+                t.HasCheckConstraint("CK_source_outcomes_restricted_method_not_searched",
+                    $"\"Method\" NOT IN ({InList(SourceMethods.CannotSearchLive)}) OR \"Outcome\" NOT IN ('{ScanOutcomes.Success}', '{ScanOutcomes.Partial}')");
+                // Only a Success or Partial outcome has listings.
+                t.HasCheckConstraint("CK_source_outcomes_listings_only_when_read",
+                    $"\"Outcome\" IN ('{ScanOutcomes.Success}', '{ScanOutcomes.Partial}') OR \"ListingsFound\" = 0");
+                t.HasCheckConstraint("CK_source_outcomes_counts_valid", "\"ListingsFound\" >= 0 AND \"ListingsRejected\" >= 0 AND \"Attempts\" >= 1");
+                t.HasCheckConstraint("CK_source_outcomes_finished_not_before_started", "\"FinishedAtUtc\" >= \"StartedAtUtc\"");
+            });
+            b.HasKey(x => x.Id);
+            b.Property(x => x.SourceType).IsRequired().HasMaxLength(SourceScanLimits.SourceType);
+            b.Property(x => x.Method).IsRequired().HasMaxLength(20);
+            b.Property(x => x.Outcome).IsRequired().HasMaxLength(20);
+            b.Property(x => x.ErrorText).HasMaxLength(SourceScanLimits.ErrorText);
+            b.Property(x => x.RecommendedNextStep).HasMaxLength(SourceScanLimits.NextStep);
+            // CASCADE: outcomes belong to their run and go with it.
+            b.HasOne(x => x.ScanRun).WithMany(x => x.Outcomes)
+                .HasForeignKey(x => x.ScanRunId).OnDelete(DeleteBehavior.Cascade).IsRequired();
+            // SET NULL: deleting an employer keeps the outcome history.
+            b.HasOne<Employer>().WithMany().HasForeignKey(x => x.EmployerId).OnDelete(DeleteBehavior.SetNull);
         });
     }
 }

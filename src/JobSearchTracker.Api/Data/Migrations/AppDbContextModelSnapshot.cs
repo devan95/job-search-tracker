@@ -539,6 +539,46 @@ namespace JobSearchTracker.Api.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("JobSearchTracker.Api.Data.ScanRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("FinishedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Outcome")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid?>("SearchProfileId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("StartedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Trigger")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SearchProfileId");
+
+                    b.ToTable("scan_runs", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_scan_runs_finished_not_before_started", "\"FinishedAtUtc\" IS NULL OR \"FinishedAtUtc\" >= \"StartedAtUtc\"");
+
+                            t.HasCheckConstraint("CK_scan_runs_finished_with_outcome", "(\"FinishedAtUtc\" IS NULL) = (\"Outcome\" IS NULL)");
+
+                            t.HasCheckConstraint("CK_scan_runs_outcome_values", "\"Outcome\" IS NULL OR \"Outcome\" IN ('success', 'partial', 'failed', 'unsupported', 'notChecked')");
+
+                            t.HasCheckConstraint("CK_scan_runs_trigger_values", "\"Trigger\" IN ('manual', 'scheduled', 'boardTest')");
+                        });
+                });
+
             modelBuilder.Entity("JobSearchTracker.Api.Data.SearchProfile", b =>
                 {
                     b.Property<Guid>("Id")
@@ -628,6 +668,138 @@ namespace JobSearchTracker.Api.Data.Migrations
                     b.HasIndex("RoleListId");
 
                     b.ToTable("search_profile_role_lists");
+                });
+
+            modelBuilder.Entity("JobSearchTracker.Api.Data.SourceListing", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("ExternalId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset>("FirstSeenAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("LastSeenAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("SourceUpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SourceType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("SourceUrl")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("JobId");
+
+                    b.HasIndex("SourceType", "ExternalId")
+                        .IsUnique();
+
+                    b.ToTable("source_listings", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_source_listings_content_hash_format", "\"ContentHash\" ~ '^[0-9a-f]{64}$'");
+
+                            t.HasCheckConstraint("CK_source_listings_external_id_not_blank", "char_length(btrim(\"ExternalId\")) > 0");
+
+                            t.HasCheckConstraint("CK_source_listings_seen_order", "\"LastSeenAtUtc\" >= \"FirstSeenAtUtc\"");
+
+                            t.HasCheckConstraint("CK_source_listings_source_type_not_blank", "char_length(btrim(\"SourceType\")) > 0");
+
+                            t.HasCheckConstraint("CK_source_listings_source_url_http", "\"SourceUrl\" IS NULL OR \"SourceUrl\" ~* '^https?://'");
+                        });
+                });
+
+            modelBuilder.Entity("JobSearchTracker.Api.Data.SourceOutcome", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("EmployerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ErrorText")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTimeOffset>("FinishedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("ListingsFound")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ListingsRejected")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Method")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("RecommendedNextStep")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid>("ScanRunId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SourceType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<DateTimeOffset>("StartedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmployerId");
+
+                    b.HasIndex("ScanRunId");
+
+                    b.ToTable("source_outcomes", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_source_outcomes_counts_valid", "\"ListingsFound\" >= 0 AND \"ListingsRejected\" >= 0 AND \"Attempts\" >= 1");
+
+                            t.HasCheckConstraint("CK_source_outcomes_finished_not_before_started", "\"FinishedAtUtc\" >= \"StartedAtUtc\"");
+
+                            t.HasCheckConstraint("CK_source_outcomes_listings_only_when_read", "\"Outcome\" IN ('success', 'partial') OR \"ListingsFound\" = 0");
+
+                            t.HasCheckConstraint("CK_source_outcomes_method_values", "\"Method\" IN ('api', 'careerPage', 'linkOnly', 'emailDerived')");
+
+                            t.HasCheckConstraint("CK_source_outcomes_outcome_values", "\"Outcome\" IN ('success', 'partial', 'failed', 'unsupported', 'notChecked')");
+
+                            t.HasCheckConstraint("CK_source_outcomes_restricted_method_not_searched", "\"Method\" NOT IN ('linkOnly', 'emailDerived') OR \"Outcome\" NOT IN ('success', 'partial')");
+
+                            t.HasCheckConstraint("CK_source_outcomes_source_type_not_blank", "char_length(btrim(\"SourceType\")) > 0");
+                        });
                 });
 
             modelBuilder.Entity("JobSearchTracker.Api.Data.Application", b =>
@@ -730,6 +902,14 @@ namespace JobSearchTracker.Api.Data.Migrations
                     b.Navigation("RoleList");
                 });
 
+            modelBuilder.Entity("JobSearchTracker.Api.Data.ScanRun", b =>
+                {
+                    b.HasOne("JobSearchTracker.Api.Data.SearchProfile", null)
+                        .WithMany()
+                        .HasForeignKey("SearchProfileId")
+                        .OnDelete(DeleteBehavior.SetNull);
+                });
+
             modelBuilder.Entity("JobSearchTracker.Api.Data.SearchProfile", b =>
                 {
                     b.HasOne("JobSearchTracker.Api.Data.Candidate", "Candidate")
@@ -798,6 +978,31 @@ namespace JobSearchTracker.Api.Data.Migrations
                     b.Navigation("SearchProfile");
                 });
 
+            modelBuilder.Entity("JobSearchTracker.Api.Data.SourceListing", b =>
+                {
+                    b.HasOne("JobSearchTracker.Api.Data.Job", null)
+                        .WithMany()
+                        .HasForeignKey("JobId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("JobSearchTracker.Api.Data.SourceOutcome", b =>
+                {
+                    b.HasOne("JobSearchTracker.Api.Data.Employer", null)
+                        .WithMany()
+                        .HasForeignKey("EmployerId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("JobSearchTracker.Api.Data.ScanRun", "ScanRun")
+                        .WithMany("Outcomes")
+                        .HasForeignKey("ScanRunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ScanRun");
+                });
+
             modelBuilder.Entity("JobSearchTracker.Api.Data.Application", b =>
                 {
                     b.Navigation("AuditEntries");
@@ -842,6 +1047,11 @@ namespace JobSearchTracker.Api.Data.Migrations
             modelBuilder.Entity("JobSearchTracker.Api.Data.RoleListTitle", b =>
                 {
                     b.Navigation("Aliases");
+                });
+
+            modelBuilder.Entity("JobSearchTracker.Api.Data.ScanRun", b =>
+                {
+                    b.Navigation("Outcomes");
                 });
 
             modelBuilder.Entity("JobSearchTracker.Api.Data.SearchProfile", b =>
