@@ -63,6 +63,9 @@ public sealed record ScanRunResult(Guid ScanRunId, string Outcome, IReadOnlyList
 /// </summary>
 public sealed class SourceScanService(AppDbContext db, TimeProvider clock, Func<TimeSpan, CancellationToken, Task>? delay = null)
 {
+    /// <summary>How long a timed-out attempt waits for the adapter's cancellation callbacks before moving on.</summary>
+    private static readonly TimeSpan CancelCleanupBound = TimeSpan.FromSeconds(1);
+
     private readonly Func<TimeSpan, CancellationToken, Task> _delay = delay ?? ((span, ct) => Task.Delay(span, ct));
 
     public async Task<ScanRunResult> RunAsync(Guid? searchProfileId, string trigger, IReadOnlyList<SourceTask> tasks,
@@ -153,7 +156,7 @@ public sealed class SourceScanService(AppDbContext db, TimeProvider clock, Func<
         }
         catch (TimeoutException)
         {
-            await attemptCts.CancelAsync();
+            await CancelAttemptAsync(attemptCts);
             return SourceFetchResult.Failed($"The source did not answer within {timeout.TotalSeconds:0.#} seconds.", "Try again later.", retryable: true);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
@@ -165,6 +168,26 @@ public sealed class SourceScanService(AppDbContext db, TimeProvider clock, Func<
         {
             // Type name only: exception messages can carry URLs, payload fragments or secrets.
             return SourceFetchResult.Failed($"The source adapter failed ({ex.GetType().Name}).", "Check the source settings and try again.");
+        }
+    }
+
+    /// <summary>
+    /// Cancels the attempt's token for cooperative adapters. CancelAsync completes only after registered callbacks finish, so the
+    /// wait is bounded: a blocking callback must not hold up the Failed result or the retry.
+    /// </summary>
+    private static async Task CancelAttemptAsync(CancellationTokenSource attemptCts)
+    {
+        try
+        {
+            await attemptCts.CancelAsync().WaitAsync(CancelCleanupBound);
+        }
+        catch (TimeoutException)
+        {
+            // A callback is still running; the attempt is already over, so do not wait for it.
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // A misbehaving cancellation callback threw; the attempt has already failed.
         }
     }
 

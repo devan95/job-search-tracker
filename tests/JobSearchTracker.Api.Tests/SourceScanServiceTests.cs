@@ -8,8 +8,6 @@ namespace JobSearchTracker.Api.Tests;
 public class SourceScanServiceTests : SourceScanTestBase
 {
     private static readonly string[] ExpectedSourceTypes = ["greenhouse", "jobboard", "lever"];
-    private static readonly string[] ExpectedOutcomes = ["success", "partial", "failed", "unsupported", "notChecked"];
-    private static readonly string[] ExpectedMethods = ["api", "careerPage", "linkOnly", "emailDerived"];
 
     private static readonly SourceRunPolicy Fast = new(TimeSpan.FromSeconds(5), maxAttempts: 3, baseBackoff: TimeSpan.FromSeconds(1));
 
@@ -276,6 +274,26 @@ public class SourceScanServiceTests : SourceScanTestBase
     }
 
     [Fact]
+    public async Task A_blocking_cancellation_callback_does_not_hold_up_the_failed_result()
+    {
+        using var release = new ManualResetEventSlim();
+        var adapter = new FakeSourceAdapter().HangsWithBlockingCancellationCallback(release);
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+
+        try
+        {
+            var result = await RunAsync(adapter, new SourceRunPolicy(TimeSpan.FromMilliseconds(50), maxAttempts: 1));
+
+            Assert.Equal(ScanOutcomes.Failed, result.Outcome);
+            Assert.True(watch.Elapsed < TimeSpan.FromSeconds(8), $"The run took {watch.Elapsed}.");
+        }
+        finally
+        {
+            release.Set();
+        }
+    }
+
+    [Fact]
     public async Task An_exception_is_recorded_as_failed_with_the_type_name_only()
     {
         var adapter = new FakeSourceAdapter().Throws(new InvalidOperationException("GET https://x/?token=SECRET123 failed"));
@@ -407,6 +425,9 @@ public class SourceScanServiceTests : SourceScanTestBase
 /// <summary>Contract pieces that need no database.</summary>
 public class SourceContractTests
 {
+    private static readonly string[] ExpectedOutcomes = ["success", "partial", "failed", "unsupported", "notChecked"];
+    private static readonly string[] ExpectedMethods = ["api", "careerPage", "linkOnly", "emailDerived"];
+
     [Fact]
     public void The_registry_finds_adapters_by_source_type_and_rejects_duplicates_and_unknown_methods()
     {
@@ -459,6 +480,8 @@ public class SourceContractTests
         Assert.Equal("failed Authorization=[redacted]", SafeText.Clean("failed Authorization: Basic c3ludGhldGlj", 100));
         Assert.Equal("failed bearer=[redacted] and more", SafeText.Clean("failed Bearer SYNTHETIC_TOKEN and more", 100));
         Assert.DoesNotContain("SYNTHETIC_TOKEN", SafeText.Clean("Authorization: Bearer SYNTHETIC_TOKEN", 100));
+        Assert.DoesNotContain("SYNTHETIC_SECRET", SafeText.Clean("{\"token\":\"SYNTHETIC_SECRET\"}", 100));
+        Assert.DoesNotContain("SYNTHETIC_SECRET", SafeText.Clean("{'password': 'SYNTHETIC_SECRET'}", 100));
         var clipped = SafeText.Clean(new string('x', 600), 500)!;
         Assert.Equal(500, clipped.Length);
         Assert.EndsWith("…", clipped);

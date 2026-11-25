@@ -43,6 +43,14 @@ public sealed class FakeSourceAdapter : ISourceAdapter
         return SourceFetchResult.Failed("unreachable");
     });
 
+    /// <summary>Hangs, and its cancellation callback blocks until released: cancelling the token must not hold up the common path.</summary>
+    public FakeSourceAdapter HangsWithBlockingCancellationCallback(ManualResetEventSlim release) => Add(async ct =>
+    {
+        using var registration = ct.Register(() => release.Wait(TimeSpan.FromSeconds(10)));
+        await Task.Delay(Timeout.Infinite, CancellationToken.None);
+        return SourceFetchResult.Failed("unreachable");
+    });
+
     /// <summary>Blocks the calling thread before returning a task, ignoring the token: the worst-behaved adapter.</summary>
     public FakeSourceAdapter BlocksSynchronouslyIgnoringToken(ManualResetEventSlim release) => Add(_ =>
     {
