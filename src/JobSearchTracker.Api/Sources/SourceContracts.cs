@@ -145,9 +145,9 @@ public sealed class SourceAdapterRegistry
 /// <summary>Makes error and next-step text safe to store and show: one line, no secrets, bounded.</summary>
 public static partial class SafeText
 {
-    // A keyword (optionally quoted, as in a JSON key) followed by = or :, then the whole value (a quoted value may contain spaces). An optional auth scheme (Bearer, Basic) is part of the value, so
+    // A keyword (optionally quoted, as in a JSON key) followed by = or :, then the whole value (a quoted value may contain spaces and backslash-escaped quotes). An optional auth scheme (Bearer, Basic) is part of the value, so
     // "Authorization: Bearer abc" is redacted completely, not just the word "Bearer".
-    [GeneratedRegex(@"(?i)\b(token|key|secret|password|passwd|authorization|bearer|api[_-]?key)\b[""']?\s*[=:]\s*(?:(?:bearer|basic)\s+)?(?:""[^""]*""|'[^']*'|\S+)")]
+    [GeneratedRegex(@"(?i)\b(token|key|secret|password|passwd|authorization|bearer|api[_-]?key)\b[""']?\s*[=:]\s*(?:(?:bearer|basic)\s+)?(?:""(?:\\.|[^""\\])*""|'(?:\\.|[^'\\])*'|\S+)")]
     private static partial Regex SecretPattern();
 
     // A bare "Bearer <credential>" with no keyword before it, for example in a copied header or a provider message.

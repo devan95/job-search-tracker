@@ -486,6 +486,10 @@ public class SourceContractTests
         Assert.DoesNotContain("SECRET", spaced);
         Assert.DoesNotContain("words", spaced);
         Assert.Contains("failed", spaced);
+        var escaped = SafeText.Clean("{\"password\":\"SYNTHETIC_PREFIX\\\"SYNTHETIC_SECRET\"} failed", 100)!;
+        Assert.DoesNotContain("SYNTHETIC_PREFIX", escaped);
+        Assert.DoesNotContain("SYNTHETIC_SECRET", escaped);
+        Assert.Contains("failed", escaped);
         var clipped = SafeText.Clean(new string('x', 600), 500)!;
         Assert.Equal(500, clipped.Length);
         Assert.EndsWith("…", clipped);
