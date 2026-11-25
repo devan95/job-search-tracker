@@ -7,6 +7,10 @@ namespace JobSearchTracker.Api.Tests;
 /// <summary>Phase 2 S2.2: the common path, its honest outcomes, bounded timeout and retry, and persistence of scan runs and outcomes.</summary>
 public class SourceScanServiceTests : SourceScanTestBase
 {
+    private static readonly string[] ExpectedSourceTypes = ["greenhouse", "jobboard", "lever"];
+    private static readonly string[] ExpectedOutcomes = ["success", "partial", "failed", "unsupported", "notChecked"];
+    private static readonly string[] ExpectedMethods = ["api", "careerPage", "linkOnly", "emailDerived"];
+
     private static readonly SourceRunPolicy Fast = new(TimeSpan.FromSeconds(5), maxAttempts: 3, baseBackoff: TimeSpan.FromSeconds(1));
 
     private readonly List<TimeSpan> _delays = [];
@@ -253,6 +257,25 @@ public class SourceScanServiceTests : SourceScanTestBase
     }
 
     [Fact]
+    public async Task A_source_that_blocks_before_returning_a_task_is_still_bounded_by_the_timeout()
+    {
+        using var release = new ManualResetEventSlim();
+        var adapter = new FakeSourceAdapter().BlocksSynchronouslyIgnoringToken(release);
+
+        try
+        {
+            var result = await RunAsync(adapter, new SourceRunPolicy(TimeSpan.FromMilliseconds(50), maxAttempts: 1));
+
+            Assert.Equal(ScanOutcomes.Failed, result.Outcome);
+            Assert.Equal(1, adapter.Calls);
+        }
+        finally
+        {
+            release.Set();
+        }
+    }
+
+    [Fact]
     public async Task An_exception_is_recorded_as_failed_with_the_type_name_only()
     {
         var adapter = new FakeSourceAdapter().Throws(new InvalidOperationException("GET https://x/?token=SECRET123 failed"));
@@ -333,7 +356,7 @@ public class SourceScanServiceTests : SourceScanTestBase
         Assert.Equal(ScanOutcomes.Partial, result.Outcome);
         await using var read = Db.CreateContext();
         var outcomes = await read.SourceOutcomes.OrderBy(o => o.SourceType).ToListAsync();
-        Assert.Equal(new[] { "greenhouse", "jobboard", "lever" }, outcomes.Select(o => o.SourceType));
+        Assert.Equal(ExpectedSourceTypes, outcomes.Select(o => o.SourceType));
         Assert.Null(outcomes.Single(o => o.SourceType == "jobboard").EmployerId);
         Assert.Equal(ScanTriggers.Scheduled, (await read.ScanRuns.SingleAsync()).Trigger);
     }
@@ -432,6 +455,10 @@ public class SourceContractTests
         Assert.Equal("a b c", SafeText.Clean("a\n b\t\tc", 50));
         Assert.Equal("failed api_key=[redacted] and more", SafeText.Clean("failed api_key=abc123 and more", 100));
         Assert.Contains("token=[redacted]", SafeText.Clean("GET /x?token=SECRET failed", 100));
+        Assert.Equal("failed Authorization=[redacted] and more", SafeText.Clean("failed Authorization: Bearer SYNTHETIC_TOKEN and more", 100));
+        Assert.Equal("failed Authorization=[redacted]", SafeText.Clean("failed Authorization: Basic c3ludGhldGlj", 100));
+        Assert.Equal("failed bearer=[redacted] and more", SafeText.Clean("failed Bearer SYNTHETIC_TOKEN and more", 100));
+        Assert.DoesNotContain("SYNTHETIC_TOKEN", SafeText.Clean("Authorization: Bearer SYNTHETIC_TOKEN", 100));
         var clipped = SafeText.Clean(new string('x', 600), 500)!;
         Assert.Equal(500, clipped.Length);
         Assert.EndsWith("…", clipped);
@@ -440,8 +467,8 @@ public class SourceContractTests
     [Fact]
     public void Outcome_and_method_vocabularies_are_the_approved_ones()
     {
-        Assert.Equal(new[] { "success", "partial", "failed", "unsupported", "notChecked" }, ScanOutcomes.All);
-        Assert.Equal(new[] { "api", "careerPage", "linkOnly", "emailDerived" }, SourceMethods.All);
+        Assert.Equal(ExpectedOutcomes, ScanOutcomes.All);
+        Assert.Equal(ExpectedMethods, SourceMethods.All);
         Assert.True(ScanOutcomes.ReadListings(ScanOutcomes.Success));
         Assert.True(ScanOutcomes.ReadListings(ScanOutcomes.Partial));
         Assert.False(ScanOutcomes.ReadListings(ScanOutcomes.NotChecked));

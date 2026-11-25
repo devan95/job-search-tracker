@@ -101,14 +101,14 @@ Close the CMD window afterwards so the variables do not leak into normal use.
 ### Order 4: role lists and location sets
 
 The migration `AddRoleListsAndLocationSets` comes after `AddApplications`. On a fresh database the first `migrate` applies it
-as well, and `\dt` then lists nineteen tables plus `__EFMigrationsHistory` (sixteen before `AddSourceListingsAndScanRuns`). An existing database at `AddApplications` only
-gets this one migration (six new tables, no data change). Everything else in the verification above stays the same.
+as well, and `\dt` then lists nineteen tables plus `__EFMigrationsHistory` (sixteen before `AddSourceListingsAndScanRuns`). An existing database at `AddApplications` gets this
+migration and `AddSourceListingsAndScanRuns` (nine new tables in total, no data change). Everything else in the verification above stays the same.
 
 ### Phase 2 S2.1: source listings and scan runs
 
 The migration `AddSourceListingsAndScanRuns` comes after `AddRoleListsAndLocationSets`. It adds three tables (`source_listings`,
 `scan_runs`, `source_outcomes`) and changes no existing table or row. Revert only this migration on a throw-away database with
-`dotnet ef database update 20261118120000_AddRoleListsAndLocationSets`.
+`dotnet ef database update 20261118120000_AddRoleListsAndLocationSets --project src/JobSearchTracker.Api --startup-project src/JobSearchTracker.Api`.
 
 ### Source adapter contract (Phase 2 S2.2)
 

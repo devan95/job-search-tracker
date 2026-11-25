@@ -146,12 +146,14 @@ public sealed class SourceScanService(AppDbContext db, TimeProvider clock, Func<
         using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         try
         {
-            // WaitAsync bounds the wait even when the adapter ignores its token.
-            return await adapter.FetchAsync(request, attemptCts.Token).WaitAsync(timeout, ct);
+            // Task.Run puts the call itself inside the timeout, so an adapter that blocks before its first await is bounded too.
+            // WaitAsync bounds the wait even when the adapter ignores its token. A blocked thread is only freed by the adapter
+            // honouring the token, so adapters must still do that.
+            return await Task.Run(() => adapter.FetchAsync(request, attemptCts.Token), attemptCts.Token).WaitAsync(timeout, ct);
         }
         catch (TimeoutException)
         {
-            attemptCts.Cancel();
+            await attemptCts.CancelAsync();
             return SourceFetchResult.Failed($"The source did not answer within {timeout.TotalSeconds:0.#} seconds.", "Try again later.", retryable: true);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)

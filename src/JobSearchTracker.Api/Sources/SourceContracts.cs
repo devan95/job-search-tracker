@@ -145,8 +145,14 @@ public sealed class SourceAdapterRegistry
 /// <summary>Makes error and next-step text safe to store and show: one line, no secrets, bounded.</summary>
 public static partial class SafeText
 {
-    [GeneratedRegex(@"(?i)\b(token|key|secret|password|passwd|authorization|bearer|api[_-]?key)\b\s*[=:]\s*\S+")]
+    // A keyword followed by = or :, then the whole value. An optional auth scheme (Bearer, Basic) is part of the value, so
+    // "Authorization: Bearer abc" is redacted completely, not just the word "Bearer".
+    [GeneratedRegex(@"(?i)\b(token|key|secret|password|passwd|authorization|bearer|api[_-]?key)\b\s*[=:]\s*(?:(?:bearer|basic)\s+)?\S+")]
     private static partial Regex SecretPattern();
+
+    // A bare "Bearer <credential>" with no keyword before it, for example in a copied header or a provider message.
+    [GeneratedRegex(@"(?i)\bbearer\s+\S+")]
+    private static partial Regex BearerPattern();
 
     [GeneratedRegex(@"\s+")]
     private static partial Regex WhiteSpace();
@@ -159,6 +165,7 @@ public static partial class SafeText
         }
 
         var redacted = SecretPattern().Replace(text, m => $"{m.Groups[1].Value}=[redacted]");
+        redacted = BearerPattern().Replace(redacted, "bearer=[redacted]");
         var singleLine = WhiteSpace().Replace(redacted, " ").Trim();
         if (singleLine.Length <= maxLength)
         {

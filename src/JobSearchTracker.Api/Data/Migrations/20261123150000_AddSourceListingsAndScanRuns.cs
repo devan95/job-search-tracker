@@ -8,6 +8,8 @@ namespace JobSearchTracker.Api.Data.Migrations
     /// <inheritdoc />
     public partial class AddSourceListingsAndScanRuns : Migration
     {
+        private static readonly string[] SourceListingKeyColumns = ["SourceType", "ExternalId"];
+
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
@@ -122,7 +124,7 @@ namespace JobSearchTracker.Api.Data.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_source_listings_SourceType_ExternalId",
                 table: "source_listings",
-                columns: new[] { "SourceType", "ExternalId" },
+                columns: SourceListingKeyColumns,
                 unique: true);
 
             migrationBuilder.CreateIndex(

@@ -39,8 +39,15 @@ public sealed class FakeSourceAdapter : ISourceAdapter
     /// <summary>A hang that ignores the cancellation token, like a badly written adapter.</summary>
     public FakeSourceAdapter HangsIgnoringToken() => Add(async _ =>
     {
-        await Task.Delay(TimeSpan.FromMinutes(5));
+        await Task.Delay(TimeSpan.FromMinutes(5), CancellationToken.None);
         return SourceFetchResult.Failed("unreachable");
+    });
+
+    /// <summary>Blocks the calling thread before returning a task, ignoring the token: the worst-behaved adapter.</summary>
+    public FakeSourceAdapter BlocksSynchronouslyIgnoringToken(ManualResetEventSlim release) => Add(_ =>
+    {
+        release.Wait(TimeSpan.FromSeconds(10));
+        return Task.FromResult(SourceFetchResult.Success([]));
     });
 
     public Task<SourceFetchResult> FetchAsync(SourceRequest request, CancellationToken cancellationToken)
